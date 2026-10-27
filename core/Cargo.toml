@@ -1,0 +1,33 @@
+[package]
+name = "plume-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "PLUME core: 3D curve sketching, guides, extrusion, rendering data and file formats."
+
+[lib]
+name = "plume_core"
+path = "src/lib.rs"
+
+[dependencies]
+glam = { workspace = true }
+nalgebra = { version = "0.34", default-features = false, features = ["std"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+image = { workspace = true }
+zip = { workspace = true }
+zstd = { workspace = true }
+flate2 = "1.1"
+base64 = { workspace = true }
+gltf = { version = "1.4", default-features = false, features = ["utils", "names", "import"] }
+obj = "0.10"
+approx = { workspace = true }
+bytemuck = { workspace = true }
+tokio = { version = "1.54", features = ["rt", "rt-multi-thread", "macros"] }
+log = "0.4"
+stl = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+approx = { workspace = true }

@@ -1,0 +1,6 @@
+# PLUME materials
+newmtl plume_0
+Kd 0.36000 0.78000 0.86000
+d 1.00000
+Ks 0.2 0.2 0.2
+Ns 18

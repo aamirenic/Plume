@@ -1,0 +1,35 @@
+[workspace]
+resolver = "2"
+members = ["core", "app", "ffi"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["PLUME contributors"]
+repository = "https://example.invalid/plume"
+
+[workspace.dependencies]
+glam = { version = "0.34.1", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+anyhow = "1.0"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif"] }
+zip = { version = "9.1", default-features = false, features = ["deflate"] }
+zstd = "0.13"
+base64 = "0.22"
+approx = "0.5"
+bytemuck = { version = "1.25", features = ["derive"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
