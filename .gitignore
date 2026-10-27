@@ -1,0 +1,32 @@
+# Rust
+/target
+**/target
+*.tmp
+*.log
+
+# Local verification toolchain and test artifacts
+/.tools
+
+# Local OpenCode session tooling (not part of the shipped app)
+/.opencode
+
+# Android / Gradle
+/android/.gradle
+/android/.idea
+/android/build
+/android/app/build
+/android/local.properties
+/android/.kotlin
+/android/app/src/main/jniLibs/*/*.so
+*.apk
+*.aab
+*.iml
+*.keystore
+*.jks
+*.hprof
+
+# Desktop/OS noise
+.DS_Store
+Thumbs.db
+gui_err*.txt
+gui_out*.txt

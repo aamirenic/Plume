@@ -1,0 +1,17 @@
+# Normalise text in the repository; keep platform scripts runnable.
+* text=auto
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+android/gradlew text eol=lf
+
+# Binary assets and documents
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.glb binary
+*.stl binary
+*.usdz binary
+*.plume binary
+*.feather binary
+*.jar binary
