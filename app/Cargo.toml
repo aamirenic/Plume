@@ -1,0 +1,27 @@
+[package]
+name = "plume-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "PLUME desktop dev harness (wgpu + egui) and reference UI for the Android shell."
+
+[[bin]]
+name = "plume"
+path = "src/main.rs"
+
+[dependencies]
+plume-core = { path = "../core" }
+eframe = { version = "0.37", default-features = false, features = ["wgpu", "default_fonts", "accesskit"] }
+egui = "0.37"
+egui-wgpu = "0.37"
+wgpu = { version = "30.0", default-features = false, features = ["wgsl", "dx12", "vulkan", "metal", "gles"] }
+bytemuck = { workspace = true }
+image = { workspace = true }
+rfd = "0.17"
+glam = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+pollster = "0.4"
+env_logger = "0.11"
+log = "0.4"
+anyhow = { workspace = true }
