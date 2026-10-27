@@ -1,0 +1,20 @@
+[package]
+name = "plume-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "UniFFI bridge used by PLUME's Android shell."
+
+[lib]
+name = "plume_ffi"
+crate-type = ["cdylib", "staticlib", "lib"]
+
+[dependencies]
+plume-core = { path = "../core" }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+image = { workspace = true }
+uniffi = { version = "0.32", features = ["cli"] }
+
+[dev-dependencies]
+tempfile = "3"

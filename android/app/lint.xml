@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!-- UniFFI probes for java.lang.ref.Cleaner when it is available and falls
+         back to the JNA cleaner on Android below API 33. Lint cannot follow the
+         reflective guard, so suppress only that generated file. -->
+    <issue id="NewApi">
+        <ignore path="src/main/java/uniffi/plume_ffi/plume_ffi.kt" />
+    </issue>
+</lint>

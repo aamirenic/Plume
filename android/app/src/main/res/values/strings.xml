@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PLUME</string>
+    <string name="camera_permission_rationale">PLUME uses the camera only to place your sketch in augmented reality. Nothing is uploaded.</string>
+    <string name="ar_unsupported">This device does not support ARCore. The editor still works without AR.</string>
+    <string name="ar_install_required">Google Play Services for AR is needed for placement. Install it and try again.</string>
+</resources>
