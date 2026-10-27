@@ -54,8 +54,9 @@ here only when it could change a release claim.
 
 - **Status:** open, automation-only.
 - **Impact:** Save to an existing `.plume` path was driven end to end, but the
-  native Open and Save As dialogs were not. Their cancellation logic is covered
-  by code review and the dirty-state tests, not by a scripted run.
+  native Open, Save As and Import Mesh dialogs were not. Their cancellation
+  logic is covered by code review and the dirty-state tests, not by a scripted
+  run.
 - **Why it is blocked:** `rfd` dialogs are separate native windows. In this
   session `SetForegroundWindow` is unreliable, the dialog can open behind the
   main window, and synthetic keyboard input can land in the wrong process.
@@ -129,6 +130,11 @@ blockers for the stated product.
 - Android exposes touch authoring, export, gallery, animation preview and AR,
   but not the full desktop surface/import control set.
 - Full OBJ/glTF/STL/`.plume` import is not exposed on Android.
+- Importers preserve source coordinates as PLUME millimetres; they do not
+  rescale metre-authored OBJ/STL files or apply glTF's metre convention.
+  Automatic framing keeps imports visible, but physical scale relative to
+  brushes and guides remains ambiguous until an explicit import scale or unit
+  selector exists.
 - MP4 export requires a local `ffmpeg`; it is not redistributed. FFmpeg 9.0.2
   was present on this host and the core MP4 test passed; the GUI encode job was
   not driven.

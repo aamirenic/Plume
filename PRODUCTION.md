@@ -1,7 +1,7 @@
 # PLUME production status
 
-Version: 0.1.0  
-Release marker: `PLUME: production ready`
+Version 0.1.0. Release commit: `bd6d1ff` (`PLUME: production ready`).
+Post-release playtest: 2026-10-28, with fixes committed on top.
 
 PLUME is a complete, buildable release of the desktop studio, the Rust engine
 and the Android shell. This file records exactly what was verified for that
@@ -9,11 +9,12 @@ release, the checksums of the built artifacts, and what is still required before
 a signed public distribution.
 
 **Readiness statement.** The source tree, the desktop release binary and the
-Android debug APK are complete and pass their automated checks. This is a
-source-and-debug-build release, not a signed store release: the Android APK has
-not been run on a device, and no upload key or store listing exists. The open
-items are listed under [Distribution checklist](#distribution-checklist) and in
-[BLOCKED.md](BLOCKED.md).
+Android debug APK are complete and pass their automated checks. The desktop
+binary and APK in the artifact table were rebuilt after the 2026-10-28 playtest
+fixes. This is a source-and-debug-build release, not a signed store release: the
+Android APK has not been run on a device, and no upload key or store listing
+exists. The open items are listed under [Distribution
+checklist](#distribution-checklist) and in [BLOCKED.md](BLOCKED.md).
 
 ## Verified configuration
 
@@ -42,7 +43,7 @@ All commands were run from the repository root unless noted.
 | Check | Command | Result |
 | --- | --- | --- |
 | Formatting | `cargo fmt --all -- --check` | clean |
-| Tests | `cargo test --workspace` | **206 passed, 0 failed** (184 core, 14 desktop, 8 FFI; 0 doc-tests) |
+| Tests | `cargo test --workspace` | **212 passed, 0 failed** (186 core, 18 desktop, 8 FFI; 0 doc-tests) |
 | Lints | `cargo clippy --workspace --all-targets -- -D warnings` | clean |
 | Desktop release | `cargo build --release -p plume-app` | success |
 | Android unit tests | `:app:testDebugUnitTest` | success |
@@ -56,7 +57,9 @@ view is a canvas rather than a clickable control.
 The Rust workspace also passes its headless render path: all eight built-in
 scenes were rendered at 1200×750 and visually inspected for framing, guide
 visibility, black frames and tone mapping. The renders are checked into
-`docs/renders/`.
+`docs/renders/`. The 2026-10-28 pass additionally rendered every `.plume`,
+`.feather`, OBJ, GLB and STL sample at 96×96 and 800×800 and inspected framing
+and non-empty output.
 
 The APK contains both native PLUME bridges and the ARCore/JNA native libraries:
 
@@ -78,10 +81,10 @@ SHA-256.
 
 | Artifact | Bytes | SHA-256 |
 | --- | ---: | --- |
-| `target/release/plume.exe` | 14,658,048 | `07279038EDAAC11BCB4CCF6CAB9F230820531596B0CA5B2872E15C532E6CBE05` |
-| `android/app/build/outputs/apk/debug/app-debug.apk` | 14,579,144 | `2DD15BFD2DBFBC3693BB6FC6EC11C443020021CCDCE2BA67F1DB067B906480B4` |
-| `lib/arm64-v8a/libplume_ffi.so` | 1,949,072 | `5B52A88DA0482798CE69467FB03CCD6D4BC82DFBFA1A25C0CC5842BB657D540C` |
-| `lib/x86_64/libplume_ffi.so` | 1,995,440 | `67CA31D2732190BB5822ECA994A0E42895D989E192E3EE27C6E1875DDD49DE23` |
+| `target/release/plume.exe` | 14,661,632 | `B8B81FA934049DF1B9B1E753DACEFF53119BA793B21E64039DA24138BF3084F0` |
+| `android/app/build/outputs/apk/debug/app-debug.apk` | 16,575,768 | `699D71CEE37804433F14E0BC626F4E23170CDF02D5EA9D6D85B04BE316F5A288` |
+| `lib/arm64-v8a/libplume_ffi.so` | 1,949,184 | `E62F6ECAC3CD71DA796588473205F89766D2E85A5040CF86978BB30B3C06AD2E` |
+| `lib/x86_64/libplume_ffi.so` | 1,995,440 | `75B0A87E628E9392B65DB721D43662B9162247F03CCBD4F1354D648F7B172EA4` |
 
 The debug APK is signed with the standard debug key, so it is installable for
 testing but is not suitable for publication. The desktop binary is a Windows

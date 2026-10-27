@@ -62,12 +62,24 @@ place to look when you wonder why something is shaped the way it is.
   density for speed. Export uses the densest setting and welds where useful.
 - **Mirroring is a scene operation.** Mirror copies are ordinary curves tagged
   as mirrors, so they can be selected, exported or deleted like any other art.
+- **Imported art is framed, not rescaled.** The core frames imported bounds
+  when it builds a document, and the desktop reframes after importing into an
+  open scene. `Camera::frame_bounds` uses `MIN_NEAR` as its radius floor rather
+  than one world unit, so metre-scale models are not left as specks. The source
+  coordinates themselves are preserved.
 
 ## Coordinates and units
 
 - Right-handed, Y-up, XZ ground plane.
 - World units are millimetres by convention. Exporters convert to metres unless
   the caller asks for millimetres.
+- **Importers keep source coordinates.** OBJ/glTF/STL vertices enter the
+  document as PLUME millimetres; there is no silent 1000× conversion. OBJ and
+  STL carry no unit metadata, and guessing could misread deliberately small
+  artwork. Framing makes an import visible, but its physical scale relative to
+  brushes and guides remains ambiguous until an explicit import scale or unit
+  selector exists. glTF's metre convention is the clearest candidate for that
+  option.
 - Cameras use a wgpu-style 0..1 depth projection. The core also exposes the
   equivalent nalgebra projection for tooling and tests.
 - The default drawing plane is camera-facing and passes through the selection
@@ -75,6 +87,10 @@ place to look when you wonder why something is shaped the way it is.
 
 ## Safety and reliability
 
+- **One scene and one headless destination per invocation.** `--gallery` and
+  `--file` are mutually exclusive rather than one silently winning.
+  `--render`, `--output` and `-o` all imply `--headless`, and the destination
+  must be a file with a `.png`, `.jpg` or `.gif` extension.
 - **Project-local toolchain.** Android verification uses a portable JDK, SDK and
   Gradle under the ignored `.tools/` directory. No system PATH, registry entry
   or service is modified.

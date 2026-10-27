@@ -12,6 +12,11 @@ human-readable contract.
 - Exporters default to metres (`unit_scale = 0.001`) for OBJ, glTF and USDZ,
   because those formats usually assume metres in a DCC.
 - STL keeps the caller's scale too; the CLI and samples use metres.
+- Importers keep vertex coordinates as PLUME units; no unit conversion is
+  applied. OBJ and STL carry no unit metadata, and glTF's metre convention is
+  not converted on import. Imported documents are framed to their bounds, but
+  physical scale relative to brushes and guides must be accounted for by the
+  artist until an import-scale option exists.
 - Cameras use a wgpu-style 0..1 depth projection. The core also exposes the
   equivalent nalgebra projection for tooling and tests.
 

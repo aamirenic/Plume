@@ -200,7 +200,46 @@ impl ImportedScene {
             );
             doc.scene.add_guide(guide);
         }
+        // Imported meshes often use metre-scale coordinates while the editor
+        // camera defaults to a millimetre-scale scene. Frame the import so it
+        // is visible immediately rather than a speck beyond the grid.
+        let (min, max) = doc.scene.bounds_visible();
+        doc.camera.frame_bounds(min, max, 1.0);
         let _ = brush;
         Ok(doc)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::guide::{build_guide_mesh, GuideKind};
+    use crate::Vec3;
+
+    #[test]
+    fn imported_geometry_is_framed_in_the_new_document() {
+        let mut mesh = build_guide_mesh(&GuideKind::Box {
+            size: Vec3::splat(20.0),
+        });
+        mesh.transform(crate::Mat4::from_translation(Vec3::new(100.0, 0.0, 0.0)));
+        let imported = ImportedScene {
+            meshes: vec![ImportMesh {
+                name: "Cube".into(),
+                mesh,
+                color: Vec4::ONE,
+            }],
+            notes: Vec::new(),
+        };
+        let doc = imported.to_document(&Brush::default(), "Import").unwrap();
+        let centre = Vec3::new(100.0, 0.0, 0.0);
+        assert!(
+            (doc.camera.target - centre).length() < 1.0e-3,
+            "camera target {:?} is not the import centre",
+            doc.camera.target
+        );
+        assert!(
+            doc.camera.position.distance(doc.camera.target) < 120.0,
+            "camera stayed at the default millimetre distance"
+        );
     }
 }

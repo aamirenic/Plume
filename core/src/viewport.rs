@@ -336,7 +336,7 @@ impl Camera {
     /// Smoothly frame an axis-aligned bounding box.
     pub fn frame_bounds(&mut self, min: Vec3, max: Vec3, aspect: f32) {
         let center = (min + max) * 0.5;
-        let radius = ((max - min).length() * 0.5).max(1.0);
+        let radius = ((max - min).length() * 0.5).max(MIN_NEAR);
         let vfov = self.fov_y_deg.to_radians();
         let hfov = 2.0 * ((vfov * 0.5).tan() * aspect.max(0.1)).atan();
         let fov = vfov.min(hfov);
@@ -603,6 +603,27 @@ mod tests {
         ] {
             let p = cam.project(corner, size());
             assert!(p.is_some());
+        }
+    }
+
+    #[test]
+    fn frame_bounds_reaches_small_imports() {
+        let mut cam = Camera::default();
+        let min = Vec3::new(-0.18, -0.126, -0.0135);
+        let max = Vec3::new(0.18, 0.126, 0.0135);
+        cam.frame_bounds(min, max, 1.0);
+        let distance = cam.position.distance(cam.target);
+        assert!(
+            distance < 2.0,
+            "small import should be framed close, got {distance}"
+        );
+        for corner in [
+            min,
+            max,
+            Vec3::new(min.x, max.y, min.z),
+            Vec3::new(max.x, min.y, max.z),
+        ] {
+            assert!(cam.project(corner, size()).is_some());
         }
     }
 

@@ -55,6 +55,12 @@ impl Sandbox {
     /// inside the sandbox.
     pub fn ensure_file(&self, path: &Path) -> Result<PathBuf> {
         let absolute = self.absolute(path);
+        if absolute.is_dir() {
+            bail!(
+                "destination is a folder; choose a file name\n{}",
+                absolute.display()
+            );
+        }
         let parent = absolute.parent().unwrap_or(&self.root);
         std::fs::create_dir_all(parent)
             .with_context(|| format!("could not create folder {}", parent.display()))?;
@@ -159,6 +165,18 @@ mod tests {
         let outside = sandbox.root().join("..").join("definitely-outside.plume");
         assert!(sandbox.ensure_file(&outside).is_err());
         assert!(!sandbox.contains(&outside));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rejects_existing_folder_as_file_destination() {
+        let root = temp_root("folder");
+        let sandbox = Sandbox::at(&root).unwrap();
+        let error = sandbox.ensure_file(sandbox.root()).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("destination is a folder"),
+            "{error:#}"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 

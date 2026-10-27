@@ -171,7 +171,7 @@ docs/       Format reference and curated QA renders
 
 The current verified state is:
 
-- `cargo test --workspace`: **206 tests pass** (184 core, 14 desktop, 8 FFI)
+- `cargo test --workspace`: **212 tests pass** (186 core, 18 desktop, 8 FFI)
 - `cargo clippy --workspace --all-targets -- -D warnings`: clean
 - `cargo fmt --all -- --check`: clean
 - Android `testDebugUnitTest`, `lintDebug` and `assembleDebug`: **BUILD

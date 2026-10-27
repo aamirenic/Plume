@@ -1107,7 +1107,15 @@ impl PlumeApp {
                 }
                 let before = self.doc.clone();
                 let count = scene.meshes.len();
+                let mut imported_bounds: Option<(Vec3, Vec3)> = None;
                 for imported in &scene.meshes {
+                    let (min, max) = imported.mesh.bounds();
+                    if !imported.mesh.positions.is_empty() {
+                        imported_bounds = Some(match imported_bounds {
+                            Some((min0, max0)) => (min0.min(min), max0.max(max)),
+                            None => (min, max),
+                        });
+                    }
                     let id = self.doc.scene.new_guide_id();
                     let guide = Guide::imported(
                         id,
@@ -1120,6 +1128,16 @@ impl PlumeApp {
                         Some(pretty_path(&path)),
                     );
                     self.doc.scene.add_guide(guide);
+                }
+                if let Some((min, max)) = imported_bounds {
+                    let aspect = if self.viewport_size.y > 1.0 {
+                        self.viewport_size.x / self.viewport_size.y
+                    } else {
+                        1.6
+                    };
+                    self.exit_preview();
+                    self.doc.camera.frame_bounds(min, max, aspect);
+                    self.needs_render = true;
                 }
                 self.history.push_snapshot("Import mesh", before);
                 self.touch_document();

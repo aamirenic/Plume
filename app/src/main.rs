@@ -75,14 +75,7 @@ fn render_headless(args: &Args) -> Result<()> {
     doc.scene.touch();
     let width = args.width;
     let height = args.height;
-    eprintln!(
-        "plume: rendering {} at {width}x{height} ({}, {} samples)",
-        doc.name,
-        args.quality.label(),
-        args.samples.max(1)
-    );
-    let image = gpu::render_document_headless(&doc, width, height, args.quality, args.samples)
-        .context("headless GPU render failed")?;
+    let samples = args.samples.max(1);
     let destination = args
         .output
         .clone()
@@ -91,24 +84,49 @@ fn render_headless(args: &Args) -> Result<()> {
     let destination = sandbox
         .ensure_file(&destination)
         .with_context(|| format!("invalid render destination {}", destination.display()))?;
-    image
-        .save(&destination)
-        .with_context(|| format!("could not write {}", destination.display()))?;
+    let format = render_format(&destination)?;
+    eprintln!(
+        "plume: rendering {} at {width}x{height} ({}, {} {})",
+        doc.name,
+        args.quality.label(),
+        samples,
+        if samples == 1 { "sample" } else { "samples" }
+    );
+    let image = gpu::render_document_headless(&doc, width, height, args.quality, args.samples)
+        .context("headless GPU render failed")?;
+    let (image_width, image_height) = (image.width(), image.height());
+    match format {
+        image::ImageFormat::Jpeg => image::DynamicImage::ImageRgba8(image)
+            .to_rgb8()
+            .save_with_format(&destination, format),
+        _ => image.save_with_format(&destination, format),
+    }
+    .with_context(|| format!("could not write {}", destination.display()))?;
     eprintln!(
         "plume: wrote {} ({}x{})",
         destination.display(),
-        image.width(),
-        image.height()
+        image_width,
+        image_height
     );
     Ok(())
 }
 
+fn render_format(path: &Path) -> Result<image::ImageFormat> {
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase());
+    match extension.as_deref() {
+        Some("png") => Ok(image::ImageFormat::Png),
+        Some("jpg" | "jpeg") => Ok(image::ImageFormat::Jpeg),
+        Some("gif") => Ok(image::ImageFormat::Gif),
+        Some(other) => bail!("unsupported render image extension .{other}; use .png, .jpg or .gif"),
+        None => bail!("render destination has no image extension; use .png, .jpg or .gif"),
+    }
+}
+
 fn run_gui(args: &Args) -> Result<()> {
-    let startup = args
-        .file
-        .as_ref()
-        .map(PathBuf::from)
-        .filter(|path| path.exists());
+    let startup = args.file.as_ref().map(PathBuf::from);
     if let Some(id) = &args.gallery {
         validate_gallery(id)?;
     }
@@ -240,6 +258,7 @@ impl Args {
                     args.render = Some(PathBuf::from(value("--render")?));
                 }
                 "--output" | "-o" => {
+                    args.headless = true;
                     args.output = Some(PathBuf::from(value("--output")?));
                 }
                 "--gallery" => args.gallery = Some(value("--gallery")?),
@@ -298,6 +317,9 @@ impl Args {
                 positional[1..].join(" ")
             );
         }
+        if args.gallery.is_some() && args.file.is_some() {
+            bail!("--gallery and --file cannot be combined; choose one scene");
+        }
         if args.output.is_none() {
             args.output = args.render.clone();
         }
@@ -349,7 +371,7 @@ Options:
   --file <path>       Scene or mesh to open (alternative to a positional path)
   --headless          Render without a window
   --render <path>     Headless output image (implies --headless)
-  -o, --output <path> Output image (alias for --render)
+  -o, --output <path> Output image (alias for --render; implies --headless)
   --width <px>        Render width, 16..=7680 (default 1600)
   --height <px>       Render height, 16..=7680 (default 1000)
   --quality <level>   draft, normal, high or export (default normal)
@@ -454,5 +476,65 @@ mod tests {
         assert!(message.contains("ribbon-bloom"));
         assert!(message.contains("clean-stage"));
         validate_gallery("ribbon-bloom").unwrap();
+    }
+
+    #[test]
+    fn output_option_implies_headless_capture() {
+        let args = parse(&["--output", "render.png"]).unwrap();
+        assert!(args.headless);
+        assert_eq!(args.output, Some(PathBuf::from("render.png")));
+        assert_eq!(args.render, None);
+
+        let args = parse(&["-o", "render.png"]).unwrap();
+        assert!(args.headless);
+        assert_eq!(args.output, Some(PathBuf::from("render.png")));
+    }
+
+    #[test]
+    fn gallery_and_file_are_mutually_exclusive() {
+        let error = parse(&[
+            "--gallery",
+            "ribbon-bloom",
+            "--file",
+            "testdata/import-cube.obj",
+        ])
+        .unwrap_err();
+        assert!(error.to_string().contains("cannot be combined"), "{error}");
+
+        let error = parse(&["--gallery", "ribbon-bloom", "testdata/import-cube.obj"]).unwrap_err();
+        assert!(error.to_string().contains("cannot be combined"), "{error}");
+    }
+
+    #[test]
+    fn render_formats_are_named_explicitly() {
+        assert_eq!(
+            render_format(Path::new("capture.png")).unwrap(),
+            image::ImageFormat::Png
+        );
+        assert_eq!(
+            render_format(Path::new("capture.JPG")).unwrap(),
+            image::ImageFormat::Jpeg
+        );
+        assert_eq!(
+            render_format(Path::new("capture.jpeg")).unwrap(),
+            image::ImageFormat::Jpeg
+        );
+        assert_eq!(
+            render_format(Path::new("capture.gif")).unwrap(),
+            image::ImageFormat::Gif
+        );
+
+        let error = render_format(Path::new("capture.xyz")).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("unsupported render image extension .xyz"),
+            "{error}"
+        );
+        let error = render_format(Path::new("capture")).unwrap_err();
+        assert!(
+            error.to_string().contains("has no image extension"),
+            "{error}"
+        );
     }
 }
