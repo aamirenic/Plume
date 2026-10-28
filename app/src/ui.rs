@@ -35,6 +35,8 @@ impl eframe::App for PlumeApp {
         self.handle_close_request(&ctx);
         if self.pending_confirm.is_none() {
             self.handle_shortcuts(&ctx);
+        } else if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+            self.pending_confirm = None;
         }
 
         egui::Panel::top("plume.top_bar")
@@ -93,6 +95,31 @@ struct LayerRowState {
     indented: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CloseRequestOutcome {
+    Allow,
+    Prompt,
+    KeepOpen,
+}
+
+fn close_request_outcome(
+    dirty: bool,
+    prompt_open: bool,
+    close_approved: bool,
+) -> CloseRequestOutcome {
+    if close_approved {
+        // The user explicitly chose to discard unsaved changes. Let the close
+        // through instead of reopening the same prompt on the next frame.
+        CloseRequestOutcome::Allow
+    } else if prompt_open {
+        CloseRequestOutcome::KeepOpen
+    } else if dirty {
+        CloseRequestOutcome::Prompt
+    } else {
+        CloseRequestOutcome::Allow
+    }
+}
+
 impl PlumeApp {
     // -- global behaviour ---------------------------------------------------
 
@@ -101,11 +128,19 @@ impl PlumeApp {
         if !requested {
             return;
         }
-        if self.dirty && self.pending_confirm.is_none() {
-            self.pending_confirm = Some(ConfirmAction::Quit);
-        }
-        if self.pending_confirm.is_some() || self.dirty {
-            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+        match close_request_outcome(
+            self.dirty,
+            self.pending_confirm.is_some(),
+            self.close_approved,
+        ) {
+            CloseRequestOutcome::Allow => {}
+            CloseRequestOutcome::Prompt => {
+                self.pending_confirm = Some(ConfirmAction::Quit);
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            }
+            CloseRequestOutcome::KeepOpen => {
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            }
         }
     }
 
@@ -3944,11 +3979,11 @@ impl PlumeApp {
             let mut dialog = rfd::FileDialog::new()
                 .set_title("Choose an export destination")
                 .add_filter(self.export.format.label(), &[ext]);
-            if let Some(parent) = std::path::Path::new(&self.export.path).parent() {
-                if parent.exists() {
-                    dialog = dialog.set_directory(parent);
-                }
-            }
+            let start = match std::path::Path::new(&self.export.path).parent() {
+                Some(parent) if parent.exists() => parent.to_path_buf(),
+                _ => self.sandbox.projects_dir_ready(),
+            };
+            dialog = dialog.set_directory(start);
             if let Some(path) = dialog.save_file() {
                 if self.sandbox.contains(&path) {
                     self.export.path = crate::sandbox::pretty_path(&path);
@@ -4224,4 +4259,35 @@ impl PlumeApp {
     }
 }
 
-// === APPEND ===
+#[cfg(test)]
+mod tests {
+    use super::{close_request_outcome, CloseRequestOutcome};
+
+    #[test]
+    fn clean_close_does_not_prompt() {
+        assert_eq!(
+            close_request_outcome(false, false, false),
+            CloseRequestOutcome::Allow
+        );
+    }
+
+    #[test]
+    fn dirty_close_prompts_once() {
+        assert_eq!(
+            close_request_outcome(true, false, false),
+            CloseRequestOutcome::Prompt
+        );
+        assert_eq!(
+            close_request_outcome(true, true, false),
+            CloseRequestOutcome::KeepOpen
+        );
+    }
+
+    #[test]
+    fn approved_close_is_not_intercepted_again() {
+        assert_eq!(
+            close_request_outcome(true, false, true),
+            CloseRequestOutcome::Allow
+        );
+    }
+}

@@ -498,6 +498,7 @@ pub struct PlumeApp {
     pub export: ExportState,
     pub media: Option<MediaJob>,
     pub pending_confirm: Option<ConfirmAction>,
+    pub close_approved: bool,
     pub drag: Drag,
     pub gesture_before: Option<Document>,
     pub edit_guard: Option<Document>,
@@ -583,6 +584,7 @@ impl PlumeApp {
             export: ExportState::default(),
             media: None,
             pending_confirm: None,
+            close_approved: false,
             drag: Drag::None,
             gesture_before: None,
             edit_guard: None,
@@ -913,7 +915,7 @@ impl PlumeApp {
     pub fn choose_open_path(&mut self) -> Option<PathBuf> {
         let mut dialog = rfd::FileDialog::new()
             .set_title("Open a PLUME scene")
-            .set_directory(self.sandbox.projects_dir());
+            .set_directory(self.sandbox.projects_dir_ready());
         for (name, ext) in [
             ("PLUME documents", &["plume"][..]),
             ("Feather documents", &["feather"][..]),
@@ -941,7 +943,7 @@ impl PlumeApp {
         ));
         let path = rfd::FileDialog::new()
             .set_title(title)
-            .set_directory(self.sandbox.projects_dir())
+            .set_directory(self.sandbox.projects_dir_ready())
             .set_file_name(
                 suggested
                     .file_name()
@@ -1063,6 +1065,7 @@ impl PlumeApp {
                 self.dialog = Dialog::None;
             }
             ConfirmAction::Quit => {
+                self.close_approved = true;
                 self.notify("Closing PLUME", false);
                 if let Some(ctx) = self.last_ctx.as_ref() {
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -1076,7 +1079,7 @@ impl PlumeApp {
     pub fn import_mesh_dialog(&mut self) {
         let path = rfd::FileDialog::new()
             .set_title("Import 3D mesh as guide surfaces")
-            .set_directory(self.sandbox.projects_dir())
+            .set_directory(self.sandbox.projects_dir_ready())
             .add_filter("3D meshes", &["obj", "gltf", "glb", "stl"])
             .pick_file();
         let Some(path) = path else { return };

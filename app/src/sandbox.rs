@@ -5,7 +5,7 @@
 //! development) and can be pointed anywhere with `PLUME_SANDBOX`.  Every file
 //! dialog result is validated here before it reaches the core IO layer.
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 
@@ -50,6 +50,17 @@ impl Sandbox {
         self.root.join("local_projects")
     }
 
+    /// The conventional project folder, created on first use. Native file
+    /// dialogs silently fall back to the profile's Documents folder when the
+    /// requested directory does not exist, so create it before opening one.
+    pub fn projects_dir_ready(&self) -> PathBuf {
+        let dir = self.projects_dir();
+        if let Err(error) = std::fs::create_dir_all(&dir) {
+            log::warn!("could not create project folder {}: {error}", dir.display());
+        }
+        dir
+    }
+
     /// Validate and create the parent of a destination file.  The returned path
     /// is absolute, canonical in its parent component, and guaranteed to be
     /// inside the sandbox.
@@ -61,7 +72,39 @@ impl Sandbox {
                 absolute.display()
             );
         }
+        // Validate the nearest existing ancestor *before* creating anything.
+        // Otherwise a destination outside the sandbox with a missing parent
+        // would leave a directory tree behind even though the write is refused.
+        if absolute
+            .components()
+            .any(|component| matches!(component, Component::ParentDir))
+        {
+            bail!(
+                "refusing to write outside the PLUME sandbox\n{}",
+                absolute.display()
+            );
+        }
         let parent = absolute.parent().unwrap_or(&self.root);
+        let anchor = existing_ancestor(parent)
+            .canonicalize()
+            .with_context(|| format!("could not resolve folder {}", parent.display()))?;
+        if !anchor.starts_with(&self.root) {
+            bail!(
+                "refusing to write outside the PLUME sandbox\n{}",
+                absolute.display()
+            );
+        }
+        if absolute.exists() {
+            let existing = absolute
+                .canonicalize()
+                .with_context(|| format!("could not resolve {}", absolute.display()))?;
+            if !existing.starts_with(&self.root) {
+                bail!(
+                    "refusing to write outside the PLUME sandbox\n{}",
+                    absolute.display()
+                );
+            }
+        }
         std::fs::create_dir_all(parent)
             .with_context(|| format!("could not create folder {}", parent.display()))?;
         let parent = parent
@@ -159,12 +202,63 @@ mod tests {
     }
 
     #[test]
+    fn creates_the_project_folder_on_demand() {
+        let root = temp_root("projects");
+        let sandbox = Sandbox::at(&root).unwrap();
+        let dir = sandbox.projects_dir();
+        assert!(!dir.exists());
+        assert_eq!(sandbox.projects_dir_ready(), dir);
+        assert!(dir.is_dir());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn rejects_escape_paths() {
         let root = temp_root("escape");
         let sandbox = Sandbox::at(&root).unwrap();
         let outside = sandbox.root().join("..").join("definitely-outside.plume");
         assert!(sandbox.ensure_file(&outside).is_err());
         assert!(!sandbox.contains(&outside));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rejects_escape_before_creating_outside_folders() {
+        let root = temp_root("escape-create");
+        let sandbox = Sandbox::at(&root).unwrap();
+        let outside = root.parent().unwrap().join(format!(
+            "{}-outside",
+            root.file_name().unwrap().to_string_lossy()
+        ));
+        let _ = std::fs::remove_dir_all(&outside);
+        let target = outside.join("nested").join("a.plume");
+        let error = sandbox.ensure_file(&target).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("outside the PLUME sandbox"),
+            "{error:#}"
+        );
+        assert!(
+            !outside.exists(),
+            "ensure_file created directories outside the sandbox"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rejects_parent_components_before_creating_folders() {
+        let root = temp_root("escape-parent");
+        let sandbox = Sandbox::at(&root).unwrap();
+        let target = sandbox
+            .root()
+            .join("missing")
+            .join("..")
+            .join("..")
+            .join("escaped.plume");
+        let error = sandbox.ensure_file(&target).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("outside the PLUME sandbox"),
+            "{error:#}"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 

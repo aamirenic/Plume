@@ -1,8 +1,8 @@
 # PLUME playtest record
 
-Last pass: 2026-10-28. Build: PLUME 0.1.0, post-release playtest fixes on top
-of commit `bd6d1ff` (`PLUME: production ready`). The previous full pass was
-2026-10-27.
+Last pass: 2026-10-28 (aggressive-behaviour pass). Build: PLUME 0.1.0, playtest
+fixes on top of commit `bd6d1ff` (`PLUME: production ready`). The previous full
+pass was 2026-10-27; the import and command-line pass ran earlier the same day.
 Host: Windows 11 (10.0.26100), Intel UHD Graphics 620, 1280×720-class
 display, Rust 1.99.1, JDK 17.0.20.1, Android SDK 35, NDK 27.2.12479018.
 
@@ -13,6 +13,76 @@ code path and was also run on the software adapter.
 
 The Android shell has been built, linted and packaged, but no device or
 emulator was available. Android runtime claims below stop at the APK boundary.
+
+## 2026-10-28 aggressive-behaviour pass
+
+This pass deliberately mistreated the studio: it hammered the camera, held the
+save shortcut, ran animation while the window was unfocused or minimized, and
+cancelled or dismissed every close prompt. CPU and memory were sampled rather
+than guessed, because the previous pass had seen one alarming idle reading.
+
+### What was driven
+
+- Idle CPU and working set for 30 s after a 10 s startup settle, then again
+  after every GUI change.
+- Animation playback while foreground, minimized, and behind another window;
+  pause and resume; the transport button and the space bar.
+- Rapid view snaps (perspective, top, front, right, back), orbit, pan, wheel
+  zoom in and out, `Home`, and `F` with a selection; repeated frame-all.
+- Ten rapid `Ctrl+S` saves on a document with a path, `Ctrl+Shift+S` Save As,
+  cancel of the native Save As dialog, and a second Save As after cancellation.
+- Close with unsaved changes through all four exits: Save and continue,
+  Discard changes, Cancel, and `Escape`; plus a clean close with no prompt.
+- A CLI render destination outside the sandbox with a missing parent folder,
+  retested after the sandbox fix.
+
+### Defects found and fixed
+
+| # | Severity | What a user would hit | Fix | Re-verified by |
+| --- | --- | --- | --- | --- |
+| 1 | Data-loss blocker | Closing with unsaved changes and choosing “Discard changes” opened the same prompt again instead of exiting. The only working exit was to save. | An approved quit sets `close_approved` before sending `ViewportCommand::Close`; `close_request_outcome` lets that close through instead of cancelling it again. | GUI: Discard exits; clean close exits without prompting; Cancel leaves the document dirty and the next close prompts again; Save and continue saves (`playtest-quit.plume`, 88,625 B) and exits. `ui::tests` cover allow/prompt/keep-open. |
+| 2 | Sandbox leak | `Sandbox::ensure_file` created the missing parent folders of a destination outside the sandbox, then rejected it. The refused write left a directory tree outside the boundary. | Reject any `..` component, validate the nearest existing ancestor before `create_dir_all`, then re-check the canonical parent after creating it. | CLI retest: the outside `…\nested` folder was not created; unit tests cover escape-before-create and parent components. |
+| 3 | Minor | `Escape` did not dismiss the “Unsaved changes” prompt; it stayed until a button was clicked. | The confirm prompt consumes `Escape` and clears `pending_confirm`, leaving the document untouched. | GUI screenshot after `Escape`; the prompt closes and PLUME stays open. |
+| 4 | Misleading dialog start | On a fresh sandbox `local_projects` did not exist, so Save, Open and Import Mesh opened in the Windows `Documents` folder instead of the PLUME project folder. | `Sandbox::projects_dir_ready` creates the folder before a dialog is shown; export Browse falls back to it too. | Fresh sandbox, `Ctrl+S`: the native dialog opened at `plume > local_projects` with `Ribbon Bloom.plume` suggested. Unit test asserts on-demand creation. |
+
+### CPU, memory and focus measurements
+
+- Idle: 0.0% over 5 s after startup; 0.0–0.6% across a 30 s sample; working set
+  130.5–138.9 MB. No idle spin and no growing memory were observed.
+- Playback foreground on the software adapter: about 615% of one CPU core.
+  Minimized: 0.6%. Paused after restoring: 0.3%.
+- Playback behind another window: 252–479% across two runs. Window focus was
+  not reliable enough under automation to call this a defect; playback is
+  frame-driven and keeps requesting repaints while it plays, which is how a
+  preview should behave. Minimizing releases the CPU.
+
+### Re-runs after the fixes
+
+- Rust: `cargo fmt --all -- --check` is clean; `cargo test --workspace` passes
+  **218 tests** (186 core, 24 desktop, 8 FFI); `cargo clippy --workspace
+  --all-targets -- -D warnings` is clean; `cargo build --release --workspace`
+  succeeds.
+- GUI: all quit routes above were driven on the rebuilt release binary at
+  1280×680. Camera stress, ten rapid saves and both Save As cancellations left
+  PLUME responsive and the title correct.
+- CLI: the sandbox-escape render was rejected with `refusing to write outside
+  the PLUME sandbox` and the outside path did not exist afterwards.
+
+### Residual user friction
+
+- **`Home` frames guides as well as artwork.** In Ribbon Bloom the visible
+  “Bloom stage” guide is 900×620 while the ribbons span about 420×185; frame-all
+  therefore shows the stage and leaves the artwork smaller than `F` would. This
+  is intentional (“Framed visible geometry”): guides are scene geometry, and
+  hiding the stage guide or framing a selection gives the tight view. Changing
+  it would make canvases that *are* guides invisible to frame-all.
+- **Native dialogs remain automation-hostile.** They can open behind the main
+  window when focus is stolen. The first-use folder fix removes the wrong-folder
+  surprise, but Open, Save As and Import Mesh still cannot be driven reliably
+  end to end from a script.
+- The earlier friction list still applies: import units, software-render
+  latency, 720p display fit, sandbox-relative CLI paths, no desktop autosave,
+  one-way import, Android runtime gaps and best-effort Feather compatibility.
 
 ## 2026-10-28 post-release pass
 

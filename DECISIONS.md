@@ -99,6 +99,22 @@ place to look when you wonder why something is shaped the way it is.
 - **Atomic package writes.** `.plume` saves write and flush a sibling temporary
   file, then rename it over the destination. The old package remains intact if
   the write fails.
+- **An approved quit is final.** Closing with unsaved changes cancels the first
+  close request and shows Save and continue / Discard changes / Cancel.
+  Choosing to discard marks the quit as approved, so the follow-up close is not
+  intercepted by the dirty check again; `Escape` and Cancel dismiss the prompt
+  and keep the document dirty. A clean document closes without a prompt.
+- **Destinations are validated before anything is created.** `Sandbox::ensure_file`
+  rejects `..` components and checks the nearest existing ancestor against the
+  sandbox before calling `create_dir_all`, then re-checks the canonical parent.
+  A refused write must not leave folders outside the boundary. The project
+  folder (`local_projects`) is created on first file-dialog use, not at launch,
+  so native dialogs open there instead of silently falling back to Documents.
+- **Frame-all includes visible guides.** `Home` frames every visible curve and
+  guide, so a large stage or construction plan is part of the view. `F` frames
+  the selection, and hiding a guide removes it from the frame. This follows the
+  scene-as-authored model: framing silently ignored guides would make some
+  canvases unreachable.
 - **No network permission on Android.** The app performs no analytics, uploads
   or remote fetching. AR camera frames stay on the device.
 - **Optional FFmpeg.** MP4 capture uses a user-provided `ffmpeg` binary or the
