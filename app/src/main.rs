@@ -21,7 +21,7 @@ use anyhow::{bail, Context, Result};
 use plume_core::gallery;
 use plume_core::scene::MeshQuality;
 
-use crate::app::PlumeApp;
+use crate::app::{ImportUnit, PlumeApp};
 use crate::sandbox::Sandbox;
 
 fn main() {
@@ -62,8 +62,9 @@ fn render_headless(args: &Args) -> Result<()> {
         }
         (None, Some(path)) => {
             let path = PathBuf::from(path);
-            let (doc, notes, _) = PlumeApp::load_document_static(&sandbox, &path)
-                .with_context(|| format!("could not open {}", path.display()))?;
+            let (doc, notes, _) =
+                PlumeApp::load_document_static(&sandbox, &path, args.import_unit.factor())
+                    .with_context(|| format!("could not open {}", path.display()))?;
             for note in notes {
                 eprintln!("plume: {note}");
             }
@@ -133,8 +134,9 @@ fn run_gui(args: &Args) -> Result<()> {
 
     let viewport = egui::ViewportBuilder::default()
         .with_title("PLUME")
-        .with_inner_size([1280.0, 680.0])
-        .with_min_inner_size([1080.0, 620.0])
+        .with_inner_size([1200.0, 600.0])
+        .with_min_inner_size([960.0, 520.0])
+        .with_clamp_size_to_monitor_size(true)
         .with_app_id("plume");
 
     let wgpu_options = if software_requested() {
@@ -147,16 +149,20 @@ fn run_gui(args: &Args) -> Result<()> {
         viewport,
         wgpu_options,
         persist_window: true,
+        centered: true,
         ..Default::default()
     };
     let gallery_start = args.gallery.clone();
+    let import_scale = args.import_unit.factor();
+    let offer_recovery = args.file.is_none() && args.gallery.is_none();
     eframe::run_native(
         "PLUME",
         options,
         Box::new(move |cc| {
-            let mut app = PlumeApp::new(cc, startup.clone()).map_err(
-                |error| -> Box<dyn std::error::Error + Send + Sync> { format!("{error:#}").into() },
-            )?;
+            let mut app = PlumeApp::new(cc, startup.clone(), import_scale, offer_recovery)
+                .map_err(|error| -> Box<dyn std::error::Error + Send + Sync> {
+                    format!("{error:#}").into()
+                })?;
             if let Some(id) = &gallery_start {
                 app.load_gallery(id);
             }
@@ -217,6 +223,7 @@ struct Args {
     height: u32,
     quality: MeshQuality,
     samples: u32,
+    import_unit: ImportUnit,
     help: bool,
     version: bool,
 }
@@ -233,6 +240,7 @@ impl Default for Args {
             height: 1000,
             quality: MeshQuality::Normal,
             samples: 1,
+            import_unit: ImportUnit::default(),
             help: false,
             version: false,
         }
@@ -289,6 +297,11 @@ impl Args {
                             bail!("unknown quality {other}; use draft, normal, high or export")
                         }
                     };
+                }
+                "--import-units" => {
+                    let raw = value("--import-units")?;
+                    args.import_unit = ImportUnit::parse(&raw)
+                        .with_context(|| format!("unknown unit {raw}; use mm, cm, m or in"))?;
                 }
                 "--" => positional.extend(arguments.by_ref()),
                 other if other.starts_with('-') => {
@@ -376,6 +389,7 @@ Options:
   --height <px>       Render height, 16..=7680 (default 1000)
   --quality <level>   draft, normal, high or export (default normal)
   --samples <n>       MSAA hint; the current post stack is single-sample
+  --import-units <u>  Source units for OBJ/glTF/STL: mm, cm, m or in (default mm)
   -h, --help          Show this help
   -V, --version       Show the version
 
@@ -466,6 +480,24 @@ mod tests {
         assert!(help.contains("\n  --width <px>"));
         assert!(help.contains("\n  ribbon-bloom"));
         assert!(help.contains("16..=7680"));
+        assert!(help.contains("--import-units <u>"));
+    }
+
+    #[test]
+    fn import_units_are_explicit_and_validated() {
+        assert_eq!(parse(&[]).unwrap().import_unit, ImportUnit::Millimetres);
+        for (name, unit, factor) in [
+            ("mm", ImportUnit::Millimetres, 1.0),
+            ("cm", ImportUnit::Centimetres, 10.0),
+            ("m", ImportUnit::Metres, 1000.0),
+            ("in", ImportUnit::Inches, 25.4),
+        ] {
+            let args = parse(&["--import-units", name]).unwrap();
+            assert_eq!(args.import_unit, unit);
+            assert!((args.import_unit.factor() - factor).abs() < 1.0e-4);
+        }
+        let error = parse(&["--import-units", "feet"]).unwrap_err();
+        assert!(error.to_string().contains("unknown unit feet"), "{error}");
     }
 
     #[test]

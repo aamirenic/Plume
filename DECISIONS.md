@@ -65,21 +65,21 @@ place to look when you wonder why something is shaped the way it is.
 - **Imported art is framed, not rescaled.** The core frames imported bounds
   when it builds a document, and the desktop reframes after importing into an
   open scene. `Camera::frame_bounds` uses `MIN_NEAR` as its radius floor rather
-  than one world unit, so metre-scale models are not left as specks. The source
-  coordinates themselves are preserved.
+  than one world unit, so metre-scale models are not left as specks. Beyond the
+  explicit unit factor chosen at import, the source coordinates are preserved.
 
 ## Coordinates and units
 
 - Right-handed, Y-up, XZ ground plane.
 - World units are millimetres by convention. Exporters convert to metres unless
   the caller asks for millimetres.
-- **Importers keep source coordinates.** OBJ/glTF/STL vertices enter the
-  document as PLUME millimetres; there is no silent 1000× conversion. OBJ and
-  STL carry no unit metadata, and guessing could misread deliberately small
-  artwork. Framing makes an import visible, but its physical scale relative to
-  brushes and guides remains ambiguous until an explicit import scale or unit
-  selector exists. glTF's metre convention is the clearest candidate for that
-  option.
+- **Import units are explicit, never inferred.** OBJ/STL carry no unit metadata
+  and glTF's metre convention is not always followed in practice. Every mesh
+  import therefore asks for the source unit (mm, cm, m or in) before the file
+  is read, and `ImportedScene::scaled(factor)` applies the chosen factor.
+  `--import-units` covers headless and command-line imports. Guessing would
+  misread deliberately small artwork; the old "keep source coordinates as
+  millimetres" rule made metre-authored models 1000× too small.
 - Cameras use a wgpu-style 0..1 depth projection. The core also exposes the
   equivalent nalgebra projection for tooling and tests.
 - The default drawing plane is camera-facing and passes through the selection
@@ -104,17 +104,46 @@ place to look when you wonder why something is shaped the way it is.
   Choosing to discard marks the quit as approved, so the follow-up close is not
   intercepted by the dirty check again; `Escape` and Cancel dismiss the prompt
   and keep the document dirty. A clean document closes without a prompt.
+- **Desktop autosave is a recovery package, not a second save.** While the
+  document is dirty, a background timer writes `local_projects/.autosave.plume`
+  every 10 s using the same atomic package writer as a normal save. A plain
+  launch offers Recover work or Discard; Recover adopts the package as an
+  unsaved document, Discard deletes it. Saving, opening another document or an
+  approved quit clears the copy. Autosave pauses while an unclaimed copy exists
+  so a second document cannot silently overwrite someone else's crash work.
+  Unreadable copies are renamed `.autosave.corrupt.plume` so they cannot block
+  future recovery.
+- **Autosave is desktop-only.** Android has its own lifecycle autosave; the two
+  policies are separate because the mobile app cannot rely on a background
+  timer.
+- **Background playback stops.** Animation preview pauses when the window loses
+  focus, keeps the last frame and says so in the status line. A studio should
+  not burn a core rendering frames nobody can see.
 - **Destinations are validated before anything is created.** `Sandbox::ensure_file`
   rejects `..` components and checks the nearest existing ancestor against the
   sandbox before calling `create_dir_all`, then re-checks the canonical parent.
   A refused write must not leave folders outside the boundary. The project
   folder (`local_projects`) is created on first file-dialog use, not at launch,
   so native dialogs open there instead of silently falling back to Documents.
-- **Frame-all includes visible guides.** `Home` frames every visible curve and
-  guide, so a large stage or construction plan is part of the view. `F` frames
-  the selection, and hiding a guide removes it from the frame. This follows the
-  scene-as-authored model: framing silently ignored guides would make some
-  canvases unreachable.
+- **Frame-all includes visible guides; frame-artwork excludes them.**
+  `Home` frames every visible curve and guide, so a large stage or construction
+  plan is part of the view. `Shift+Home` (and View > Frame artwork) frames only
+  visible curves, which is the tight view users want when a metre-scale import
+  dwarfs the drawing. `F` frames the selection, and hiding a guide removes it
+  from either frame. This follows the scene-as-authored model: framing silently
+  ignored guides would make some canvases unreachable, but a separate tight
+  frame keeps the artwork usable.
+- **The default window fits a 720p work area.** The initial client size is
+  1200×600 with a 960×520 minimum, centred and clamped to the monitor. A
+  1280×680 default plus window chrome overflowed a 1366×768 desktop and hid the
+  status strip.
+- **Native dialogs are parented to the editor.** Open, Save As, Import and
+  Export Browse receive the live eframe window and display handles. An
+  unparented picker can open behind PLUME when another process steals focus
+  during the dialog call.
+- **The import unit modal treats `Escape` as Cancel.** It is a modal choice, so
+  the standard dismiss gesture must not fall through to the editor; the same
+  applies while any modal is open, where global shortcuts are suppressed.
 - **No network permission on Android.** The app performs no analytics, uploads
   or remote fetching. AR camera frames stay on the device.
 - **Optional FFmpeg.** MP4 capture uses a user-provided `ffmpeg` binary or the

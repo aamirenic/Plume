@@ -1,10 +1,12 @@
 # PLUME playtest record
 
-Last pass: 2026-10-28 (aggressive-behaviour pass). Build: PLUME 0.1.0, playtest
-fixes on top of commit `bd6d1ff` (`PLUME: production ready`). The previous full
-pass was 2026-10-27; the import and command-line pass ran earlier the same day.
-Host: Windows 11 (10.0.26100), Intel UHD Graphics 620, 1280×720-class
-display, Rust 1.99.1, JDK 17.0.20.1, Android SDK 35, NDK 27.2.12479018.
+Last pass: 2026-10-28 (production-hardening pass: explicit import units,
+desktop autosave/recovery, frame artwork, window fit, background playback).
+Build: PLUME 0.1.0, fixes on top of commit `b946f60`. The previous full passes
+were the aggressive-behaviour pass and the import/command-line pass, both on
+2026-10-28; the production pass was 2026-10-27.
+Host: Windows 11 (10.0.26100), Intel UHD Graphics 620, 1366×768 work area,
+Rust 1.99.1, JDK 17.0.20.1, Android SDK 35, NDK 27.2.12479018.
 
 PLUME Studio requires `PLUME_SOFTWARE=1` on this host. The Intel driver crashes
 during hardware wgpu device creation; the software adapter is the documented
@@ -13,6 +15,81 @@ code path and was also run on the software adapter.
 
 The Android shell has been built, linted and packaged, but no device or
 emulator was available. Android runtime claims below stop at the APK boundary.
+
+## 2026-10-28 production-hardening pass
+
+This pass closed the remaining desktop workflow gaps that a first-time user
+would hit: ambiguous import scale, no crash recovery, a frame-all view that
+included oversized guides, a default window that did not fit a 720p work area,
+and animation playback that kept burning CPU behind another window.
+
+### What was driven
+
+- A clean launch after discarding a dirty close, then a full import:
+  File > Import mesh, the native picker, the source-unit modal, metres, and the
+  resulting guide in the viewport.
+- `Shift+Home` against a scene where the imported 1 m cube is much larger than
+  the artwork; `Home` immediately afterwards to compare.
+- Animation playback in the foreground, then focus moved to another window;
+  CPU sampled before and after the pause, and the status line inspected.
+- Autosave while dirty, a forced process kill, relaunch, and both recovery
+  choices: Recover work, then a second crash and Discard.
+- Save As from recovered work, reopening the saved package, opening a mesh
+  through File > Open (the replace variant of the unit modal), and cancelling
+  that modal.
+- The unsaved-changes prompt through Cancel, Save and continue, Discard, and a
+  clean close with no prompt. Startup with a document path argument.
+
+### Defects found and fixed
+
+| # | Severity | What a user would hit | Fix | Re-verified by |
+| --- | --- | --- | --- | --- |
+| 1 | Data-loss risk | A crash or forced kill lost every edit since the last manual save. | Desktop autosave writes `.autosave.plume` every 10 s while dirty, pauses when an older unclaimed recovery copy exists, clears it on save/adopt/approved close, and offers Recover work / Discard on a plain launch. Corrupt copies are renamed `.autosave.corrupt.plume` instead of blocking recovery. | Forced kill at 84,772 B and 118,753 B; both the Recover and Discard paths were driven; Save As cleared the copy; clean close left none. |
+| 2 | Scale blocker | A metre-authored OBJ/glTF/STL became a millimetre object; brush sizes and guide sizes no longer related to the source. | Every mesh import goes through an explicit mm/cm/m/in selector (File > Open, File > Import, and `--import-units`). The chosen factor is applied by `ImportedScene::scaled`; nothing is inferred from the file. | 1 m cube imported at 1,000 mm; toast read `Imported 1 object(s) from import-cube.obj (m)`; camera distance jumped 331 → 6,118 mm; unit tests cover each factor and invalid factors. |
+| 3 | Major | `Home` framed a 900 mm stage guide and left the artwork small; there was no tight frame that kept the guide visible. | `Scene::bounds_curves_visible` returns visible curves only; `Shift+Home` and View > Frame artwork use it. `Home` still frames all visible geometry. | Same scene: `Shift+Home` framed artwork at 833 mm, `Home` returned to 6,118 mm; status lines named each action; core tests cover guide exclusion and the empty case. |
+| 4 | Major | The 1280×680 default plus chrome overflowed a 720p work area, hiding the status strip. | Default is 1200×600 (minimum 960×520), centred and clamped to the monitor. | Fresh release window measured 1200×600 client / 1216×639 outer at 83,84; bottom 723 px on a 768 px screen with a 40 px taskbar. |
+| 5 | Major | Animation playback kept rendering at ~600% CPU after the user switched to another window. | `update_animation` pauses when the viewport is not focused, keeps the last frame, and says `Preview paused while the window is inactive`. | Foreground 614% → 12% of one core after focus loss; playhead froze at 09.60/12.00 and the pause button returned. |
+| 6 | Minor | Native Open/Save/Import dialogs could open behind PLUME when focus was stolen. | `WindowParent` copies the live eframe window/display handles and parents every rfd dialog (Open, Save As, Import, Export Browse). | The Import picker opened as `#32770` at `91,115,774,595`, inside PLUME's `83,84,1299,723` bounds; Open, Save As and Import were all driven end to end. |
+| 7 | Minor | The import unit modal ignored `Escape`; the only way out was the Cancel button. | The modal consumes `Escape` as Cancel. | GUI: `Escape` closed the unit modal without changing the document. |
+
+### Measurements
+
+- Import modal: `import-cube.obj`, path shown in full, Millimetres preselected;
+  choosing Metres and Import produced a 1,000 mm guide.
+- Autosave: 84,772 B after the first import; 118,753 B after a later stroke.
+  Recovery restored 5 curves / 2 guides / 6,118 mm and animation time 09.60.
+- Playback: ~614% of one core foreground; ~12% after focus loss and the pause
+  message; no repaint loop remained after the toast expired.
+- Save As wrote `recovered-test.plume` (89,392 B), then a later Save and
+  continue wrote 93,954 B; the recovery copy was gone after both.
+- Close routes: Cancel kept the dirty document open; Save and continue saved
+  and exited; Discard exited and left no recovery file; clean close exited
+  without a prompt.
+
+### Re-runs after the fixes
+
+- Rust: `cargo fmt --all -- --check` is clean; `cargo test --workspace` passes
+  **223 tests** (190 core, 25 desktop, 8 FFI); `cargo clippy --workspace
+  --all-targets -- -D warnings` is clean; `cargo build --release -p plume-app`
+  succeeds.
+- GUI: the flows above were driven on the release binary from this pass. After
+  the final two edits (a sandbox guard before the unit modal and `Escape` as
+  Cancel), the binary was rebuilt and the 1200×600 window fit plus the `Escape`
+  path were rechecked on the fresh executable.
+- Startup: launching with `recovered-test.plume` loaded 6 curves / 2 guides /
+  296 points and did not offer recovery, because the file was explicit.
+
+### Residual user friction
+
+- **Native dialogs remain automation-hostile.** Parenting fixes the common
+  behind-the-window failure and all four dialogs were driven here, but a busy
+  desktop can still move focus during a picker. A manual pass on macOS/Linux
+  remains necessary.
+- **Autosave is desktop-only.** Android keeps its own autosave lifecycle; the
+  two policies are documented separately.
+- The earlier friction list still applies: software-render latency, sandbox-
+  relative CLI paths, one-way import fidelity, Android runtime gaps and
+  best-effort Feather compatibility.
 
 ## 2026-10-28 aggressive-behaviour pass
 

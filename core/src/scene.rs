@@ -546,6 +546,23 @@ impl Scene {
         }
     }
 
+    /// Bounds of visible curves only, excluding guides. A large stage plane or
+    /// construction plan can dominate `bounds_visible`; this gives the explicit
+    /// "frame artwork" command a tight view without hiding scene geometry.
+    pub fn bounds_curves_visible(&mut self) -> Option<(Vec3, Vec3)> {
+        let mut min = Vec3::splat(f32::INFINITY);
+        let mut max = Vec3::splat(f32::NEG_INFINITY);
+        for c in &self.curves {
+            if !self.curve_visible(c) || c.points.is_empty() {
+                continue;
+            }
+            let (a, b) = c.bounds();
+            min = min.min(a);
+            max = max.max(b);
+        }
+        (min.x <= max.x).then_some((min, max))
+    }
+
     pub fn selection_bounds(&mut self) -> Option<(Vec3, Vec3)> {
         let curves: Vec<&Curve> = self
             .curves
@@ -1060,6 +1077,28 @@ mod tests {
         let (min, max) = scene.bounds_visible();
         assert!(min.y <= 0.01);
         assert!(max.y >= 49.0);
+    }
+
+    #[test]
+    fn curve_bounds_ignore_stage_guides() {
+        let mut scene = Scene::new();
+        stroke(&mut scene);
+        scene.add_guide(Guide::sphere(0, Vec3::Y * 40.0, 500.0));
+        let (_, max) = scene.bounds_visible();
+        assert!(
+            max.y >= 500.0,
+            "the guide should dominate the visible bounds"
+        );
+        let (min, max) = scene.bounds_curves_visible().unwrap();
+        assert!(min.y > -10.0 && max.y < 10.0, "{min:?}..{max:?}");
+        assert!(max.x <= 20.0);
+    }
+
+    #[test]
+    fn curve_bounds_are_absent_without_visible_curves() {
+        let mut scene = Scene::new();
+        scene.add_guide(Guide::sphere(0, Vec3::ZERO, 10.0));
+        assert!(scene.bounds_curves_visible().is_none());
     }
 
     #[test]

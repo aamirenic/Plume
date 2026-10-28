@@ -6,6 +6,7 @@
 
 # Local verification toolchain and test artifacts
 /.tools
+/local_projects
 
 # Local OpenCode session tooling (not part of the shipped app)
 /.opencode

@@ -50,31 +50,23 @@ here only when it could change a release claim.
 
 ## Open — test harness
 
-### 4. Native Open/Save As dialogs cannot be driven reliably
+### 4. Native dialogs are parented but not verified on every desktop
 
-- **Status:** open, automation-only.
-- **Impact:** Save to an existing `.plume` path was driven end to end, but the
-  native Open, Save As and Import Mesh dialogs were not. Their cancellation
-  logic is covered by code review and the dirty-state tests, not by a scripted
-  run.
-- **Why it is blocked:** `rfd` dialogs are separate native windows. In this
-  session `SetForegroundWindow` is unreliable, the dialog can open behind the
-  main window, and synthetic keyboard input can land in the wrong process.
-- **What would close it:** a UI automation driver with real window-level input
-  (for example WinAppDriver) or a manual pass on a normal desktop.
-
-### 5. 720p display leaves little room for the default window
-
-- **Status:** open, cosmetic/environmental.
-- **Impact:** the default 1280×680 client plus window chrome is tight on a
-  1280×720 screen; the status strip can be clipped until the user resizes or
-  maximises. The layout itself reflows correctly.
-- **What would close it:** verify on a 1280×720 screen and, if desired, lower
-  the default inner height or start maximised on small work areas.
+- **Status:** open, environment coverage.
+- **Impact:** Open, Save As, Import Mesh and Export Browse were driven end to
+  end on this host, including cancellation, after they were parented to the main
+  window. A busy desktop can still move focus during a picker, and focus
+  behaviour on macOS and Linux is unverified.
+- **Why it is blocked:** `rfd` dialogs are separate native windows, and this
+  session has one Windows host. `SetForegroundWindow` remains unreliable when
+  another process is competing for focus.
+- **What would close it:** a manual pass on a normal desktop, plus one macOS and
+  one Linux run, exercising cancel and a file chosen while another window is
+  active.
 
 ## Open — external references
 
-### 6. No Feather application or document format
+### 5. No Feather application or document format
 
 - **Status:** open, external.
 - **Impact:** `.feather` support is a documented best-effort interchange
@@ -86,7 +78,7 @@ here only when it could change a release claim.
 - **What would close it:** a lawful sample document and a published format
   description; then add fixtures and round-trip tests.
 
-### 7. USDZ has no local validator
+### 6. USDZ has no local validator
 
 - **Status:** open, tooling.
 - **Impact:** USDZ is written from the published ZIP/USDA rules and covered by
@@ -96,7 +88,7 @@ here only when it could change a release claim.
 - **What would close it:** open the generated `samples/interchange/ribbon-bloom.usdz`
   in usdview, Blender, or another USD consumer and record the result.
 
-### 8. Release signing and store distribution
+### 7. Release signing and store distribution
 
 - **Status:** open, credentials.
 - **Impact:** only a debug APK exists. `assembleRelease` has minification
@@ -121,6 +113,13 @@ future reader does not re-open them by mistake.
 - Terrazzo Tile ignored its band colours at load time.
 - CLI help lost its indentation, and missing-file errors duplicated the OS
   reason.
+- The 1280×680 default window plus chrome overflowed a 720p work area; the
+  default is now 1200×600, centred and clamped.
+- Native Open, Save As, Import and Export Browse dialogs could open behind the
+  editor; they are now parented to the main window.
+- Animation playback kept rendering after the window lost focus; it now pauses.
+- Mesh imports had no source-unit choice; mm/cm/m/in is now explicit in the
+  dialogs and in `--import-units`.
 
 ## Non-blocking scope decisions
 
@@ -130,11 +129,10 @@ blockers for the stated product.
 - Android exposes touch authoring, export, gallery, animation preview and AR,
   but not the full desktop surface/import control set.
 - Full OBJ/glTF/STL/`.plume` import is not exposed on Android.
-- Importers preserve source coordinates as PLUME millimetres; they do not
-  rescale metre-authored OBJ/STL files or apply glTF's metre convention.
-  Automatic framing keeps imports visible, but physical scale relative to
-  brushes and guides remains ambiguous until an explicit import scale or unit
-  selector exists.
+- Importers require an explicit source unit for OBJ/glTF/STL (mm, cm, m or
+  in) in both the dialogs and `--import-units`; nothing is inferred from the
+  file. Automatic framing keeps imports visible, and the chosen unit is the
+  only scale conversion applied.
 - MP4 export requires a local `ffmpeg`; it is not redistributed. FFmpeg 9.0.2
   was present on this host and the core MP4 test passed; the GUI encode job was
   not driven.

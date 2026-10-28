@@ -208,6 +208,20 @@ impl ImportedScene {
         let _ = brush;
         Ok(doc)
     }
+
+    /// Scale imported geometry by an explicit source-to-millimetre factor.
+    /// Callers choose the factor from the file's stated units; nothing is
+    /// guessed here. A non-finite or non-positive factor is ignored.
+    pub fn scaled(mut self, factor: f32) -> Self {
+        if factor.is_finite() && factor > 0.0 && (factor - 1.0).abs() > f32::EPSILON {
+            for imported in &mut self.meshes {
+                imported
+                    .mesh
+                    .transform(crate::Mat4::from_scale(crate::Vec3::splat(factor)));
+            }
+        }
+        self
+    }
 }
 
 #[cfg(test)]
@@ -241,5 +255,47 @@ mod tests {
             doc.camera.position.distance(doc.camera.target) < 120.0,
             "camera stayed at the default millimetre distance"
         );
+    }
+
+    #[test]
+    fn scaled_import_converts_source_units() {
+        let mesh = build_guide_mesh(&GuideKind::Box {
+            size: Vec3::splat(1.0),
+        });
+        let imported = ImportedScene {
+            meshes: vec![ImportMesh {
+                name: "Metre cube".into(),
+                mesh,
+                color: Vec4::ONE,
+            }],
+            notes: vec!["from test".into()],
+        };
+        let original = imported.meshes[0].mesh.bounds();
+        let scaled = imported.scaled(1000.0);
+        let (min, max) = scaled.meshes[0].mesh.bounds();
+        assert!((min - original.0 * 1000.0).length() < 0.01, "{min:?}");
+        assert!((max - original.1 * 1000.0).length() < 0.01, "{max:?}");
+        assert_eq!(scaled.notes, ["from test"]);
+    }
+
+    #[test]
+    fn invalid_scale_leaves_geometry_untouched() {
+        let mesh = build_guide_mesh(&GuideKind::Box {
+            size: Vec3::splat(2.0),
+        });
+        let imported = ImportedScene {
+            meshes: vec![ImportMesh {
+                name: "Cube".into(),
+                mesh,
+                color: Vec4::ONE,
+            }],
+            notes: Vec::new(),
+        };
+        let original = imported.meshes[0].mesh.bounds();
+        for factor in [0.0, -1.0, f32::NAN, f32::INFINITY, 1.0] {
+            let (min, max) = imported.clone().scaled(factor).meshes[0].mesh.bounds();
+            assert_eq!(min, original.0, "factor {factor}");
+            assert_eq!(max, original.1, "factor {factor}");
+        }
     }
 }

@@ -23,20 +23,28 @@ use plume_core::transform::{self, SnapMode, TransformMode};
 use plume_core::viewport::ViewSnap;
 use plume_core::{CurveId, GuideId, Vec3};
 
-use crate::app::{ConfirmAction, Dialog, ExportFormat, InspectorTab, LeftTab, PlumeApp, Tool};
+use crate::app::{
+    ConfirmAction, Dialog, ExportFormat, ImportUnit, InspectorTab, LeftTab, PlumeApp, Tool,
+    WindowParent,
+};
 use crate::theme;
 
 impl eframe::App for PlumeApp {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        self.window_parent = WindowParent::from_frame(frame);
         self.install_context(&ctx);
         self.poll_media();
         self.update_animation(&ctx);
+        self.autosave_tick(&ctx);
         self.handle_close_request(&ctx);
-        if self.pending_confirm.is_none() {
+        let modal = matches!(self.dialog, Dialog::Import | Dialog::Recovery);
+        if self.pending_confirm.is_some() {
+            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+                self.pending_confirm = None;
+            }
+        } else if !modal {
             self.handle_shortcuts(&ctx);
-        } else if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
-            self.pending_confirm = None;
         }
 
         egui::Panel::top("plume.top_bar")
@@ -133,7 +141,11 @@ impl PlumeApp {
             self.pending_confirm.is_some(),
             self.close_approved,
         ) {
-            CloseRequestOutcome::Allow => {}
+            CloseRequestOutcome::Allow => {
+                // A clean exit (or an explicit discard) must not leave a
+                // recovery copy that would be offered again next launch.
+                self.clear_autosave();
+            }
             CloseRequestOutcome::Prompt => {
                 self.pending_confirm = Some(ConfirmAction::Quit);
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
@@ -232,7 +244,11 @@ impl PlumeApp {
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::F)) {
             self.frame_selection();
         }
-        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Home)) {
+        let frame_artwork =
+            ctx.input_mut(|i| i.consume_key(egui::Modifiers::SHIFT, egui::Key::Home));
+        if frame_artwork {
+            self.frame_artwork();
+        } else if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Home)) {
             self.frame_view();
         }
 
@@ -283,6 +299,10 @@ impl PlumeApp {
                 }
                 if ui.button("Open…              Ctrl+O").clicked() {
                     self.request_open();
+                    ui.close();
+                }
+                if self.has_unclaimed_autosave() && ui.button("Recover autosave…").clicked() {
+                    self.request_recover_autosave();
                     ui.close();
                 }
                 if ui.button("Save               Ctrl+S").clicked() {
@@ -383,6 +403,10 @@ impl PlumeApp {
                 }
                 if ui.button("Frame scene          Home").clicked() {
                     self.frame_view();
+                    ui.close();
+                }
+                if ui.button("Frame artwork   Shift+Home").clicked() {
+                    self.frame_artwork();
                     ui.close();
                 }
                 ui.separator();
@@ -3532,6 +3556,8 @@ impl PlumeApp {
             Dialog::Export => self.export_dialog(ctx),
             Dialog::Help => self.help_dialog(ctx),
             Dialog::About => self.about_dialog(ctx),
+            Dialog::Import => self.import_dialog(ctx),
+            Dialog::Recovery => self.recovery_dialog(ctx),
             Dialog::None => {}
         }
         self.confirm_dialog(ctx);
@@ -3976,7 +4002,8 @@ impl PlumeApp {
         }
         if browse {
             let ext = self.export.format.extension();
-            let mut dialog = rfd::FileDialog::new()
+            let mut dialog = self
+                .file_dialog()
                 .set_title("Choose an export destination")
                 .add_filter(self.export.format.label(), &[ext]);
             let start = match std::path::Path::new(&self.export.path).parent() {
@@ -4048,6 +4075,7 @@ impl PlumeApp {
                             ("Wheel", "Zoom"),
                             ("Alt + left-drag", "Orbit"),
                             ("F / Home", "Frame selection / frame scene"),
+                            ("Shift + Home", "Frame artwork, ignoring guides"),
                         ] {
                             ui.horizontal(|ui| {
                                 ui.label(
@@ -4161,6 +4189,147 @@ impl PlumeApp {
             });
         if close {
             self.dialog = Dialog::None;
+        }
+    }
+
+    fn import_dialog(&mut self, ctx: &egui::Context) {
+        let Some(pending) = self.pending_import.clone() else {
+            self.dialog = Dialog::None;
+            return;
+        };
+        let mut unit = pending.unit;
+        let mut confirm = false;
+        let mut cancel = false;
+        let file = pending
+            .path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("mesh")
+            .to_string();
+        let title = if pending.replace {
+            "Open 3D mesh"
+        } else {
+            "Import 3D mesh"
+        };
+        egui::Modal::new(Id::unique("plume.import"))
+            .frame(theme::panel_frame())
+            .show(ctx, |ui| {
+                ui.set_width(430.0);
+                theme::heading(
+                    ui,
+                    title,
+                    Some("Choose the units this file was authored in."),
+                );
+                theme::divider(ui);
+                ui.label(RichText::new(file).size(12.0).strong().color(theme::IVORY));
+                ui.label(
+                    RichText::new(crate::sandbox::pretty_path(&pending.path))
+                        .size(9.5)
+                        .color(theme::FAINT),
+                );
+                ui.add_space(8.0);
+                theme::section_label(ui, "Source units");
+                for choice in ImportUnit::ALL {
+                    ui.radio_value(&mut unit, choice, choice.label());
+                }
+                ui.add_space(6.0);
+                ui.label(
+                    RichText::new(
+                        "PLUME stores millimetres. Nothing is inferred from the file: choose the unit you authored it in.",
+                    )
+                    .size(10.0)
+                    .color(theme::MUTED),
+                );
+                theme::divider(ui);
+                ui.horizontal(|ui| {
+                    let action = if pending.replace { "Open" } else { "Import" };
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                RichText::new(action).strong().color(theme::INK),
+                            )
+                            .fill(theme::CORAL)
+                            .stroke(Stroke::NONE)
+                            .min_size(Vec2::new(108.0, 28.0)),
+                        )
+                        .clicked()
+                    {
+                        confirm = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancel = true;
+                    }
+                });
+            });
+        if let Some(pending) = self.pending_import.as_mut() {
+            pending.unit = unit;
+        }
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+            cancel = true;
+        }
+        if confirm {
+            self.confirm_import();
+        } else if cancel {
+            self.pending_import = None;
+            self.dialog = Dialog::None;
+        }
+    }
+
+    fn recovery_dialog(&mut self, ctx: &egui::Context) {
+        if !self.recovery_pending {
+            self.dialog = Dialog::None;
+            return;
+        }
+        let path = self.autosave_path();
+        let mut recover = false;
+        let mut discard = false;
+        egui::Modal::new(Id::unique("plume.recovery"))
+            .frame(theme::panel_frame())
+            .show(ctx, |ui| {
+                ui.set_width(460.0);
+                theme::heading(
+                    ui,
+                    "Recover unsaved work?",
+                    Some("PLUME found autosaved work from an earlier session."),
+                );
+                theme::divider(ui);
+                ui.label(
+                    RichText::new(
+                        "The recovery copy is newer than the last document you saved. Recovering opens it as an unsaved scene; discarding deletes the copy.",
+                    )
+                    .size(11.0)
+                    .color(theme::MUTED),
+                );
+                ui.add_space(6.0);
+                ui.label(
+                    RichText::new(crate::sandbox::pretty_path(&path))
+                        .size(9.5)
+                        .color(theme::FAINT),
+                );
+                theme::divider(ui);
+                ui.horizontal(|ui| {
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                RichText::new("Recover work").strong().color(theme::INK),
+                            )
+                            .fill(theme::CORAL)
+                            .stroke(Stroke::NONE)
+                            .min_size(Vec2::new(124.0, 28.0)),
+                        )
+                        .clicked()
+                    {
+                        recover = true;
+                    }
+                    if ui.button("Discard").clicked() {
+                        discard = true;
+                    }
+                });
+            });
+        if recover {
+            self.recover_autosave();
+        } else if discard {
+            self.discard_autosave();
         }
     }
 

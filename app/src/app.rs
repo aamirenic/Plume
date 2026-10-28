@@ -26,10 +26,147 @@ use plume_core::shapes;
 use plume_core::transform::{self, Axis, SnapMode, TransformMode};
 use plume_core::viewport::{Camera, ViewSnap};
 use plume_core::{CurveId, Mat4, Vec2, Vec3};
+use raw_window_handle::{
+    DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, RawDisplayHandle,
+    RawWindowHandle, WindowHandle,
+};
 
 use crate::gpu::{self, GpuRenderer};
 use crate::sandbox::{pretty_path, Sandbox};
 use crate::theme;
+
+const AUTOSAVE_NAME: &str = ".autosave.plume";
+const AUTOSAVE_INTERVAL: f64 = 10.0;
+
+/// Native handles for the main window, used to parent platform file dialogs.
+/// Keeping the dialog attached to PLUME stops it from opening behind the
+/// editor when another process steals focus at the wrong moment.
+#[derive(Clone, Copy, Debug)]
+pub struct WindowParent {
+    window: RawWindowHandle,
+    display: RawDisplayHandle,
+}
+
+impl WindowParent {
+    pub fn from_frame(frame: &eframe::Frame) -> Option<Self> {
+        Some(Self {
+            window: frame.window_handle().ok()?.as_raw(),
+            display: frame.display_handle().ok()?.as_raw(),
+        })
+    }
+}
+
+impl HasWindowHandle for WindowParent {
+    fn window_handle(&self) -> std::result::Result<WindowHandle<'_>, HandleError> {
+        // Safety: the raw handle was copied from the live eframe window and is
+        // only borrowed for the duration of a dialog call while that window
+        // still exists.
+        Ok(unsafe { WindowHandle::borrow_raw(self.window) })
+    }
+}
+
+impl HasDisplayHandle for WindowParent {
+    fn display_handle(&self) -> std::result::Result<DisplayHandle<'_>, HandleError> {
+        // Safety: see `window_handle`.
+        Ok(unsafe { DisplayHandle::borrow_raw(self.display) })
+    }
+}
+
+/// Source units for an imported mesh. PLUME stores millimetres; the selector
+/// makes the conversion explicit instead of guessing from the file.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ImportUnit {
+    #[default]
+    Millimetres,
+    Centimetres,
+    Metres,
+    Inches,
+}
+
+impl ImportUnit {
+    pub const ALL: [ImportUnit; 4] = [
+        ImportUnit::Millimetres,
+        ImportUnit::Centimetres,
+        ImportUnit::Metres,
+        ImportUnit::Inches,
+    ];
+
+    pub fn factor(self) -> f32 {
+        match self {
+            ImportUnit::Millimetres => 1.0,
+            ImportUnit::Centimetres => 10.0,
+            ImportUnit::Metres => 1000.0,
+            ImportUnit::Inches => 25.4,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            ImportUnit::Millimetres => "Millimetres (as authored)",
+            ImportUnit::Centimetres => "Centimetres",
+            ImportUnit::Metres => "Metres",
+            ImportUnit::Inches => "Inches",
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            ImportUnit::Millimetres => "mm",
+            ImportUnit::Centimetres => "cm",
+            ImportUnit::Metres => "m",
+            ImportUnit::Inches => "in",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "mm" | "millimetre" | "millimetres" | "millimeter" | "millimeters" => {
+                Some(Self::Millimetres)
+            }
+            "cm" | "centimetre" | "centimetres" | "centimeter" | "centimeters" => {
+                Some(Self::Centimetres)
+            }
+            "m" | "metre" | "metres" | "meter" | "meters" => Some(Self::Metres),
+            "in" | "inch" | "inches" => Some(Self::Inches),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PendingImport {
+    pub path: PathBuf,
+    pub unit: ImportUnit,
+    /// `true` when the mesh will replace the document (File > Open), `false`
+    /// when it will be merged as guides (File > Import).
+    pub replace: bool,
+}
+
+fn is_mesh_path(path: &Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str(),
+        "obj" | "gltf" | "glb" | "stl"
+    )
+}
+
+fn import_scene(path: &Path) -> Result<io::ImportedScene> {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "obj" => Ok(io::import_obj(path)?),
+        "gltf" | "glb" => Ok(io::import_gltf(path)?),
+        "stl" => Ok(io::import_stl(path)?),
+        _ => bail!("unsupported mesh format"),
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Tools
@@ -211,6 +348,8 @@ pub enum Dialog {
     Export,
     Help,
     About,
+    Import,
+    Recovery,
 }
 
 #[derive(Clone, Debug)]
@@ -499,6 +638,13 @@ pub struct PlumeApp {
     pub media: Option<MediaJob>,
     pub pending_confirm: Option<ConfirmAction>,
     pub close_approved: bool,
+    pub pending_import: Option<PendingImport>,
+    pub window_parent: Option<WindowParent>,
+    pub recovery_pending: bool,
+    recovery_owned: bool,
+    next_autosave: f64,
+    autosaved_fingerprint: Option<String>,
+    autosave_failed: bool,
     pub drag: Drag,
     pub gesture_before: Option<Document>,
     pub edit_guard: Option<Document>,
@@ -528,7 +674,12 @@ pub struct PlumeApp {
 }
 
 impl PlumeApp {
-    pub fn new(cc: &eframe::CreationContext<'_>, startup: Option<PathBuf>) -> Result<Self> {
+    pub fn new(
+        cc: &eframe::CreationContext<'_>,
+        startup: Option<PathBuf>,
+        import_scale: f32,
+        offer_recovery: bool,
+    ) -> Result<Self> {
         theme::apply(&cc.egui_ctx);
         let sandbox = Sandbox::discover().context("could not resolve the PLUME sandbox")?;
         let mut doc = gallery::build_document("ribbon-bloom").unwrap_or_default();
@@ -536,7 +687,7 @@ impl PlumeApp {
         let mut path = None;
         let mut imported_startup = false;
         if let Some(startup) = startup {
-            match Self::load_document_static(&sandbox, &startup) {
+            match Self::load_document_static(&sandbox, &startup, import_scale) {
                 Ok((mut loaded, notes, set_path)) => {
                     loaded.scene.touch();
                     doc = loaded;
@@ -585,6 +736,13 @@ impl PlumeApp {
             media: None,
             pending_confirm: None,
             close_approved: false,
+            pending_import: None,
+            window_parent: None,
+            recovery_pending: false,
+            recovery_owned: false,
+            next_autosave: 0.0,
+            autosaved_fingerprint: None,
+            autosave_failed: false,
             drag: Drag::None,
             gesture_before: None,
             edit_guard: None,
@@ -625,7 +783,154 @@ impl PlumeApp {
         if let Some(error) = app.startup_error.take() {
             app.notify(error, true);
         }
+        if offer_recovery && app.autosave_path().is_file() {
+            app.recovery_pending = true;
+            app.dialog = Dialog::Recovery;
+        } else if !offer_recovery && app.autosave_path().is_file() {
+            app.status =
+                "Autosave paused: an older recovery copy is available in File > Recover autosave…"
+                    .into();
+        }
         Ok(app)
+    }
+
+    // -- recovery -----------------------------------------------------------
+
+    pub fn autosave_path(&self) -> PathBuf {
+        self.sandbox.projects_dir().join(AUTOSAVE_NAME)
+    }
+
+    /// Save recovery data every few seconds while the document is dirty. The
+    /// write never changes `path` or the saved baseline; a manual save is still
+    /// what makes the document clean.
+    pub fn autosave_tick(&mut self, ctx: &egui::Context) {
+        if !self.dirty || self.recovery_pending || self.has_unclaimed_autosave() {
+            return;
+        }
+        let now = ctx.input(|i| i.time);
+        if now < self.next_autosave {
+            ctx.request_repaint_after(Duration::from_secs_f64(self.next_autosave - now));
+            return;
+        }
+        let fingerprint = document_fingerprint(&self.doc);
+        if self.autosaved_fingerprint.as_deref() == Some(fingerprint.as_str()) {
+            self.next_autosave = now + AUTOSAVE_INTERVAL;
+            ctx.request_repaint_after(Duration::from_secs_f64(AUTOSAVE_INTERVAL));
+            return;
+        }
+        let path = self.sandbox.projects_dir_ready().join(AUTOSAVE_NAME);
+        let thumbnail = gallery::thumbnail(&self.doc, 256, 160);
+        match io::save_plume(&path, &self.doc, Some(&thumbnail), &BTreeMap::new()) {
+            Ok(()) => {
+                self.autosaved_fingerprint = Some(fingerprint);
+                self.next_autosave = now + AUTOSAVE_INTERVAL;
+                self.recovery_owned = true;
+                self.autosave_failed = false;
+                ctx.request_repaint_after(Duration::from_secs_f64(AUTOSAVE_INTERVAL));
+            }
+            Err(error) => {
+                self.next_autosave = now + 60.0;
+                ctx.request_repaint_after(Duration::from_secs(60));
+                if !self.autosave_failed {
+                    self.autosave_failed = true;
+                    self.notify(format!("Could not autosave: {error:#}"), true);
+                }
+            }
+        }
+    }
+
+    /// Remove the recovery package owned by the current document. An unclaimed
+    /// package from an earlier crash is left alone.
+    pub fn clear_autosave(&mut self) {
+        if !self.recovery_owned {
+            return;
+        }
+        let path = self.autosave_path();
+        if path.exists() {
+            if let Err(error) = std::fs::remove_file(&path) {
+                log::warn!("could not remove autosave {}: {error}", path.display());
+            }
+        }
+        self.recovery_owned = false;
+        self.autosaved_fingerprint = None;
+    }
+
+    pub fn recover_autosave(&mut self) {
+        let path = self.autosave_path();
+        match Self::load_document_static(&self.sandbox, &path, 1.0) {
+            Ok((doc, notes, _)) => {
+                self.adopt_document(doc, None, notes);
+                // There is no native file for recovered work, so it is unsaved
+                // until the user saves it explicitly.
+                self.saved_fingerprint = None;
+                self.dirty = true;
+                self.recovery_pending = false;
+                self.recovery_owned = true;
+                self.autosaved_fingerprint = Some(document_fingerprint(&self.doc));
+                self.dialog = Dialog::None;
+                self.notify("Recovered autosaved work", false);
+            }
+            Err(error) => {
+                self.recovery_pending = false;
+                self.dialog = Dialog::None;
+                // Keep the unreadable bytes under a separate name so the next
+                // autosave can use the normal slot without destroying them.
+                let backup = path.with_file_name(".autosave.corrupt.plume");
+                let kept = std::fs::rename(&path, &backup).is_ok();
+                let hint = if kept {
+                    format!(" The unreadable copy was kept as {}.", pretty_path(&backup))
+                } else {
+                    String::new()
+                };
+                self.notify(
+                    format!("Could not recover autosaved work: {error:#}.{hint}"),
+                    true,
+                );
+            }
+        }
+    }
+
+    pub fn discard_autosave(&mut self) {
+        let path = self.autosave_path();
+        if let Err(error) = std::fs::remove_file(&path) {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                self.notify(format!("Could not discard autosave: {error}"), true);
+            }
+        }
+        self.recovery_pending = false;
+        self.recovery_owned = false;
+        self.autosaved_fingerprint = None;
+        self.dialog = Dialog::None;
+        self.notify("Discarded autosaved work", false);
+    }
+
+    /// A crash package that has not been claimed by the current document.
+    pub fn has_unclaimed_autosave(&self) -> bool {
+        !self.recovery_owned && self.autosave_path().is_file()
+    }
+
+    pub fn request_recover_autosave(&mut self) {
+        if !self.has_unclaimed_autosave() {
+            self.notify("No autosaved work to recover", false);
+            return;
+        }
+        if self.dirty {
+            self.notify(
+                "Save or discard your current changes before recovering autosaved work",
+                true,
+            );
+            return;
+        }
+        self.recover_autosave();
+    }
+
+    /// Open a platform file dialog owned by the main window.
+    pub fn file_dialog(&self) -> rfd::FileDialog {
+        let dialog = rfd::FileDialog::new();
+        match &self.window_parent {
+            Some(parent) => dialog.set_parent(parent),
+            None => dialog,
+        }
     }
 
     // -- basics -------------------------------------------------------------
@@ -765,6 +1070,7 @@ impl PlumeApp {
     pub fn load_document_static(
         sandbox: &Sandbox,
         path: &Path,
+        import_scale: f32,
     ) -> Result<(Document, Vec<String>, bool)> {
         if !sandbox.contains(path) {
             bail!(
@@ -802,26 +1108,22 @@ impl PlumeApp {
                 }
                 Ok((imported.document, notes, false))
             }
-            "obj" => {
-                let scene = io::import_obj(path)?;
-                let doc = scene.to_document(&Brush::default(), name)?;
-                Ok((doc, scene.notes, false))
-            }
-            "gltf" | "glb" => {
-                let scene = io::import_gltf(path)?;
-                let doc = scene.to_document(&Brush::default(), name)?;
-                Ok((doc, scene.notes, false))
-            }
-            "stl" => {
-                let scene = io::import_stl(path)?;
-                let doc = scene.to_document(&Brush::default(), name)?;
-                Ok((doc, scene.notes, false))
+            "obj" | "gltf" | "glb" | "stl" => {
+                let scene = import_scene(path)?;
+                let notes = scene.notes.clone();
+                let doc = scene
+                    .scaled(import_scale)
+                    .to_document(&Brush::default(), name)?;
+                Ok((doc, notes, false))
             }
             _ => bail!("unsupported file type “.{ext}”"),
         }
     }
 
     pub fn adopt_document(&mut self, mut doc: Document, path: Option<PathBuf>, notes: Vec<String>) {
+        // The recovery slot belongs to the document that was just replaced.
+        // An unclaimed crash package is left alone for the recovery prompt.
+        self.clear_autosave();
         doc.scene.touch();
         self.doc = doc;
         self.path = path;
@@ -845,14 +1147,14 @@ impl PlumeApp {
         self.tool = Tool::Select;
     }
 
-    pub fn open_path(&mut self, path: &Path) -> Result<()> {
+    pub fn open_path(&mut self, path: &Path, import_scale: f32) -> Result<()> {
         if !self.sandbox.contains(path) {
             bail!(
                 "refusing to read outside the PLUME sandbox\n{}",
                 pretty_path(path)
             );
         }
-        let (doc, notes, set_path) = Self::load_document_static(&self.sandbox, path)?;
+        let (doc, notes, set_path) = Self::load_document_static(&self.sandbox, path, import_scale)?;
         self.adopt_document(
             doc,
             if set_path {
@@ -868,6 +1170,28 @@ impl PlumeApp {
             self.dirty = true;
         }
         Ok(())
+    }
+
+    /// Open a path chosen in the Open dialog. Mesh files need an explicit
+    /// source-unit choice first, so they enter the import dialog instead of
+    /// loading immediately.
+    pub fn open_selected_path(&mut self, path: PathBuf) {
+        if !self.sandbox.contains(&path) {
+            self.notify("That file is outside the PLUME sandbox.", true);
+            return;
+        }
+        if is_mesh_path(&path) {
+            self.pending_import = Some(PendingImport {
+                path,
+                unit: ImportUnit::default(),
+                replace: true,
+            });
+            self.dialog = Dialog::Import;
+            return;
+        }
+        if let Err(error) = self.open_path(&path, 1.0) {
+            self.notify(format!("{error:#}"), true);
+        }
     }
 
     pub fn new_document(&mut self) {
@@ -913,7 +1237,8 @@ impl PlumeApp {
     }
 
     pub fn choose_open_path(&mut self) -> Option<PathBuf> {
-        let mut dialog = rfd::FileDialog::new()
+        let mut dialog = self
+            .file_dialog()
             .set_title("Open a PLUME scene")
             .set_directory(self.sandbox.projects_dir_ready());
         for (name, ext) in [
@@ -941,7 +1266,8 @@ impl PlumeApp {
             crate::sandbox::sanitize_stem(&self.doc.name),
             ext
         ));
-        let path = rfd::FileDialog::new()
+        let path = self
+            .file_dialog()
             .set_title(title)
             .set_directory(self.sandbox.projects_dir_ready())
             .set_file_name(
@@ -1011,6 +1337,8 @@ impl PlumeApp {
         self.path = Some(path.clone());
         self.dirty = false;
         self.saved_fingerprint = Some(document_fingerprint(&self.doc));
+        // The real file now holds this state; the crash copy is redundant.
+        self.clear_autosave();
         self.notify(format!("Saved {}", pretty_path(&path)), false);
         Ok(())
     }
@@ -1029,9 +1357,7 @@ impl PlumeApp {
             return;
         }
         if let Some(path) = self.choose_open_path() {
-            if let Err(error) = self.open_path(&path) {
-                self.notify(format!("{error:#}"), true);
-            }
+            self.open_selected_path(path);
         }
     }
 
@@ -1055,9 +1381,7 @@ impl PlumeApp {
             }
             ConfirmAction::Open => {
                 if let Some(path) = self.choose_open_path() {
-                    if let Err(error) = self.open_path(&path) {
-                        self.notify(format!("{error:#}"), true);
-                    }
+                    self.open_selected_path(path);
                 }
             }
             ConfirmAction::Gallery(id) => {
@@ -1077,7 +1401,8 @@ impl PlumeApp {
     // -- import/export ------------------------------------------------------
 
     pub fn import_mesh_dialog(&mut self) {
-        let path = rfd::FileDialog::new()
+        let path = self
+            .file_dialog()
             .set_title("Import 3D mesh as guide surfaces")
             .set_directory(self.sandbox.projects_dir_ready())
             .add_filter("3D meshes", &["obj", "gltf", "glb", "stl"])
@@ -1087,68 +1412,96 @@ impl PlumeApp {
             self.notify("That file is outside the PLUME sandbox.", true);
             return;
         }
-        let scene = match path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or_default()
-            .to_ascii_lowercase()
-            .as_str()
-        {
-            "obj" => io::import_obj(&path),
-            "gltf" | "glb" => io::import_gltf(&path),
-            "stl" => io::import_stl(&path),
-            _ => {
-                self.notify("Unsupported mesh format", true);
+        if !is_mesh_path(&path) {
+            self.notify("Unsupported mesh format", true);
+            return;
+        }
+        self.pending_import = Some(PendingImport {
+            path,
+            unit: ImportUnit::default(),
+            replace: false,
+        });
+        self.dialog = Dialog::Import;
+    }
+
+    /// Apply the unit chosen in the import dialog. Opening a mesh replaces the
+    /// document; importing one merges its objects into the current scene.
+    pub fn confirm_import(&mut self) {
+        let Some(pending) = self.pending_import.take() else {
+            self.dialog = Dialog::None;
+            return;
+        };
+        self.dialog = Dialog::None;
+        let factor = pending.unit.factor();
+        if pending.replace {
+            match Self::load_document_static(&self.sandbox, &pending.path, factor) {
+                Ok((doc, mut notes, _)) => {
+                    notes.insert(0, format!("Source units: {}", pending.unit.label()));
+                    self.adopt_document(doc, None, notes);
+                    // A mesh has no native PLUME package on disk yet.
+                    self.saved_fingerprint = None;
+                    self.dirty = true;
+                }
+                Err(error) => self.notify(format!("Open failed: {error:#}"), true),
+            }
+        } else {
+            self.import_mesh_into_scene(&pending.path, factor, pending.unit);
+        }
+    }
+
+    fn import_mesh_into_scene(&mut self, path: &Path, factor: f32, unit: ImportUnit) {
+        let scene = match import_scene(path) {
+            Ok(scene) => scene.scaled(factor),
+            Err(error) => {
+                self.notify(format!("Import failed: {error:#}"), true);
                 return;
             }
         };
-        match scene {
-            Ok(scene) => {
-                if scene.meshes.is_empty() {
-                    self.notify("The file contains no geometry", true);
-                    return;
-                }
-                let before = self.doc.clone();
-                let count = scene.meshes.len();
-                let mut imported_bounds: Option<(Vec3, Vec3)> = None;
-                for imported in &scene.meshes {
-                    let (min, max) = imported.mesh.bounds();
-                    if !imported.mesh.positions.is_empty() {
-                        imported_bounds = Some(match imported_bounds {
-                            Some((min0, max0)) => (min0.min(min), max0.max(max)),
-                            None => (min, max),
-                        });
-                    }
-                    let id = self.doc.scene.new_guide_id();
-                    let guide = Guide::imported(
-                        id,
-                        if imported.name.trim().is_empty() {
-                            "Imported mesh".to_string()
-                        } else {
-                            imported.name.clone()
-                        },
-                        imported.mesh.clone(),
-                        Some(pretty_path(&path)),
-                    );
-                    self.doc.scene.add_guide(guide);
-                }
-                if let Some((min, max)) = imported_bounds {
-                    let aspect = if self.viewport_size.y > 1.0 {
-                        self.viewport_size.x / self.viewport_size.y
-                    } else {
-                        1.6
-                    };
-                    self.exit_preview();
-                    self.doc.camera.frame_bounds(min, max, aspect);
-                    self.needs_render = true;
-                }
-                self.history.push_snapshot("Import mesh", before);
-                self.touch_document();
-                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("mesh");
-                self.notify(format!("Imported {count} object(s) from {name}"), false);
-            }
-            Err(error) => self.notify(format!("Import failed: {error:#}"), true),
+        if scene.meshes.is_empty() {
+            self.notify("The file contains no geometry", true);
+            return;
         }
+        let before = self.doc.clone();
+        let count = scene.meshes.len();
+        let mut imported_bounds: Option<(Vec3, Vec3)> = None;
+        for imported in &scene.meshes {
+            let (min, max) = imported.mesh.bounds();
+            if !imported.mesh.positions.is_empty() {
+                imported_bounds = Some(match imported_bounds {
+                    Some((min0, max0)) => (min0.min(min), max0.max(max)),
+                    None => (min, max),
+                });
+            }
+            let id = self.doc.scene.new_guide_id();
+            let guide = Guide::imported(
+                id,
+                if imported.name.trim().is_empty() {
+                    "Imported mesh".to_string()
+                } else {
+                    imported.name.clone()
+                },
+                imported.mesh.clone(),
+                Some(pretty_path(path)),
+            );
+            self.doc.scene.add_guide(guide);
+        }
+        if let Some((min, max)) = imported_bounds {
+            let aspect = if self.viewport_size.y > 1.0 {
+                self.viewport_size.x / self.viewport_size.y
+            } else {
+                1.6
+            };
+            self.exit_preview();
+            self.doc.camera.frame_bounds(min, max, aspect);
+            self.needs_render = true;
+        }
+        self.history.push_snapshot("Import mesh", before);
+        self.touch_document();
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("mesh");
+        self.notify(
+            format!("Imported {count} object(s) from {name} ({})", unit.key()),
+            false,
+        );
     }
 
     pub fn run_export(&mut self) {
@@ -1494,6 +1847,24 @@ impl PlumeApp {
         self.doc.camera.frame_bounds(min, max, aspect);
         self.needs_render = true;
         self.notify("Framed visible geometry", false);
+    }
+
+    /// Frame the artwork (visible curves) while ignoring guides. Stage planes
+    /// and imported guide meshes can be much larger than the drawing itself.
+    pub fn frame_artwork(&mut self) {
+        let Some((min, max)) = self.doc.scene.bounds_curves_visible() else {
+            self.notify("No visible artwork to frame", false);
+            return;
+        };
+        let aspect = if self.viewport_size.y > 1.0 {
+            self.viewport_size.x / self.viewport_size.y
+        } else {
+            1.6
+        };
+        self.exit_preview();
+        self.doc.camera.frame_bounds(min, max, aspect);
+        self.needs_render = true;
+        self.notify("Framed artwork", false);
     }
 
     pub fn frame_selection(&mut self) {
@@ -2597,6 +2968,13 @@ impl PlumeApp {
         let now = ctx.input(|i| i.time);
         let dt = (now - self.last_time).clamp(0.0, 0.12) as f32;
         self.last_time = now;
+        // A preview in a background window only burns CPU. Pause where it is
+        // and keep the last frame; the user can resume with Space.
+        if self.doc.animation.playing && !ctx.input(|i| i.focused) {
+            self.doc.animation.pause();
+            self.preview_time = Some(self.doc.animation.time);
+            self.status = "Preview paused while the window is inactive".into();
+        }
         if self.doc.animation.playing {
             if self.doc.animation.tick(dt) {
                 self.preview_time = Some(self.doc.animation.time);

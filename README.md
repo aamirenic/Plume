@@ -38,7 +38,10 @@ artwork, icons, fonts, binaries or presets. See [NOTICE.md](NOTICE.md).
   scrubbing and GIF/MP4 capture.
 - **Interchange.** Native `.plume` packages, best-effort `.feather` interchange,
   OBJ/MTL, glTF/GLB, STL and USDZ export; OBJ/glTF/STL import; PNG/GIF/MP4 stills
-  and animation.
+  and animation. Mesh imports ask for the source unit (mm/cm/m/in) instead of
+  guessing.
+- **Desktop recovery.** Autosave writes a recovery package every 10 s while the
+  document is dirty and offers Recover work or Discard on the next plain launch.
 - **Mobile authoring.** Touch drawing with pressure, orbit/pinch/pan, gallery,
   brush browser, undo/redo, animation scrubbing, autosave, SAF export and ARCore
   tabletop placement without Sceneform.
@@ -89,6 +92,9 @@ cargo run -p plume-app -- --file samples/documents/neon-knot.plume \
 # Open the studio on a specific scene or document
 cargo run -p plume-app --release -- --gallery wire-flora
 cargo run -p plume-app --release -- samples/documents/terrazzo-tile.plume
+
+# Import a metre-authored mesh at the correct scale
+cargo run -p plume-app --release -- --import-units m testdata/import-cube.obj
 ```
 
 Relative paths are resolved inside the PLUME sandbox, not the shell's current
@@ -171,7 +177,7 @@ docs/       Format reference and curated QA renders
 
 The current verified state is:
 
-- `cargo test --workspace`: **212 tests pass** (186 core, 18 desktop, 8 FFI)
+- `cargo test --workspace`: **223 tests pass** (190 core, 25 desktop, 8 FFI)
 - `cargo clippy --workspace --all-targets -- -D warnings`: clean
 - `cargo fmt --all -- --check`: clean
 - Android `testDebugUnitTest`, `lintDebug` and `assembleDebug`: **BUILD
