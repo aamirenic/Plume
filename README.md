@@ -191,10 +191,9 @@ The current verified state is:
 GitHub Actions runs the formatting, test, clippy and desktop-release checks on
 every push and pull request.
 
-Android has been compile/lint/package verified but not run on a physical device
-in this environment. See [BLOCKED.md](BLOCKED.md) for the remaining
-verification gaps, [PRODUCTION.md](PRODUCTION.md) for the release checklist and
-[PLAYTEST.md](PLAYTEST.md) for the playtest record.
+Android has been compile, lint and package verified but has not been run on a
+physical device. The desktop build has been exercised on a software wgpu adapter;
+hardware GPU coverage depends on the host driver.
 
 ## Android
 
@@ -215,10 +214,6 @@ in [android/README.md](android/README.md).
 
 ## Documentation
 
-- [DECISIONS.md](DECISIONS.md) — architecture and scope decisions
-- [PRODUCTION.md](PRODUCTION.md) — readiness, verification and release checklist
-- [PLAYTEST.md](PLAYTEST.md) — what was driven, what broke, what remains
-- [BLOCKED.md](BLOCKED.md) — unresolved environment and verification gaps
 - [docs/FORMATS.md](docs/FORMATS.md) — document and interchange formats
 - [samples/README.md](samples/README.md) — sample provenance and regeneration
 - [testdata/README.md](testdata/README.md) — import fixture provenance
