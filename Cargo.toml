@@ -7,7 +7,6 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT"
 authors = ["PLUME contributors"]
-repository = "https://example.invalid/plume"
 
 [workspace.dependencies]
 glam = { version = "0.34.1", features = ["serde"] }

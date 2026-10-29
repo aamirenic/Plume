@@ -14,7 +14,19 @@ The repository contains two shells over one Rust engine:
 PLUME is an original, clean-room implementation. It does not contain Feather
 artwork, icons, fonts, binaries or presets. See [NOTICE.md](NOTICE.md).
 
-![PLUME desktop studio showing the Ribbon Bloom gallery scene](docs/renders/desktop-studio.png)
+## Screenshots
+
+| Desktop studio | Scene gallery |
+| --- | --- |
+| ![PLUME desktop studio showing the Ribbon Bloom gallery scene](docs/renders/desktop-studio.png) | ![PLUME scene gallery](docs/renders/scene-gallery.png) |
+
+| Explicit import units | Unsaved-changes protection |
+| --- | --- |
+| ![PLUME import unit selector](docs/renders/import-units.png) | ![PLUME unsaved-changes prompt](docs/renders/unsaved-changes.png) |
+
+All eight built-in scenes are rendered by the headless renderer in
+[`docs/renders/`](docs/renders/). They are generated from PLUME curves and
+brushes, not from third-party artwork.
 
 ## Highlights
 
@@ -45,16 +57,6 @@ artwork, icons, fonts, binaries or presets. See [NOTICE.md](NOTICE.md).
 - **Mobile authoring.** Touch drawing with pressure, orbit/pinch/pan, gallery,
   brush browser, undo/redo, animation scrubbing, autosave, SAF export and ARCore
   tabletop placement without Sceneform.
-
-## Screens
-
-| Studio | Gallery |
-| --- | --- |
-| ![PLUME desktop studio](docs/renders/desktop-studio.png) | ![PLUME scene gallery](docs/renders/scene-gallery.png) |
-
-All eight built-in scenes are rendered by the headless renderer in
-[`docs/renders/`](docs/renders/). They are generated from PLUME curves and
-brushes, not from third-party artwork.
 
 ## Quick start
 
@@ -132,6 +134,7 @@ PLUME_SOFTWARE=1 cargo run -p plume-app --release
 | C | Straight line |
 | 1 / 2 / 3 / 4 | Perspective, top, front, right |
 | F / Home | Frame selection / frame scene |
+| Shift+Home | Frame visible artwork only (excludes guides) |
 | `[` / `]` | Brush size down / up |
 | Space | Play or pause animation |
 | Ctrl+Z / Ctrl+Y | Undo / redo |
@@ -184,6 +187,9 @@ The current verified state is:
   SUCCESSFUL**, 0 lint errors
 - APK: `arm64-v8a` and `x86_64` native bridges packaged
 - All eight gallery scenes rendered headlessly and visually inspected
+
+GitHub Actions runs the formatting, test, clippy and desktop-release checks on
+every push and pull request.
 
 Android has been compile/lint/package verified but not run on a physical device
 in this environment. See [BLOCKED.md](BLOCKED.md) for the remaining
