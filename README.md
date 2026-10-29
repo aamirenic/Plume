@@ -60,6 +60,9 @@ brushes, not from third-party artwork.
 
 ## Quick start
 
+Prebuilt Windows binaries are published on the
+[releases page](https://github.com/aamirenic/Plume/releases).
+
 Requirements:
 
 - Rust stable with `rustfmt` and `clippy` (pinned by `rust-toolchain.toml`)
