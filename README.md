@@ -195,9 +195,11 @@ The current verified state is:
 GitHub Actions runs the formatting, test, clippy and desktop-release checks on
 every push and pull request.
 
-Android has been compile, lint and package verified but has not been run on a
-physical device. The desktop build has been exercised on a software wgpu adapter;
-hardware GPU coverage depends on the host driver.
+Android has been compile, lint and package verified and smoke-tested on an
+Android 15 emulator: touch drawing, framing, the gallery, export sheet and AR
+entry all run. It has not been exercised on a physical device. The desktop build
+has been run on a Windows DX12 adapter and the software wgpu fallback; hardware
+coverage beyond that depends on the host driver.
 
 ## Android
 
