@@ -41,5 +41,5 @@ Production URL: <https://aamirenic.github.io/Plume/>
   the domain root for unknown URLs.
 - Screenshots in `assets/img/` are PLUME output, not stock art. Re-export them
   from the app when the interface changes.
-- The Windows checksum in `index.html` must match the asset on release
-  `v0.1.0`.
+- The Windows and Android checksums in `index.html` must match the assets on
+  release `v0.1.0`.

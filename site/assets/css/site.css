@@ -2258,7 +2258,7 @@ ol {
   }
 
   .hero-title {
-    font-size: clamp(2.95rem, 15.2vw, 4.8rem);
+    font-size: clamp(2.75rem, 13.8vw, 4.8rem);
     margin-top: 16px;
   }
 
