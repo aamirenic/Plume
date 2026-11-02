@@ -262,7 +262,10 @@ private fun EditorTopBar(
                 letterSpacing = 4.5.sp,
             )
             Text(
-                text = state.info?.name ?: "Opening studio",
+                text = listOfNotNull(
+                    state.info?.name ?: "Opening studio",
+                    if (state.autosavedAt > 0) "Saved" else null,
+                ).joinToString(" · "),
                 color = PlumeColors.Muted,
                 style = MaterialTheme.typography.labelSmall,
                 maxLines = 1,
@@ -302,17 +305,12 @@ private fun EditorTopBar(
                     onClick = onNew,
                 )
                 DropdownMenuItem(
-                    text = { Text("Send it out") },
+                    text = { Text("Export scene") },
                     onClick = onExport,
                 )
                 DropdownMenuItem(
                     text = { Text("Place with AR") },
                     onClick = onAr,
-                )
-                DropdownMenuItem(
-                    text = { Text(if (state.autosavedAt > 0) "Saved on this device" else "Not saved yet") },
-                    enabled = false,
-                    onClick = {},
                 )
             }
         }
@@ -329,7 +327,7 @@ private fun TopBarButton(
 ) {
     Box(
         modifier = Modifier
-            .size(40.dp)
+            .size(44.dp)
             .clip(RoundedCornerShape(10.dp))
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -359,10 +357,10 @@ private fun CanvasChrome(
         BrushChip(
             state = state,
             onClick = onBrushes,
-            modifier = Modifier.widthIn(max = 150.dp),
+            modifier = Modifier.widthIn(max = 168.dp),
         )
         Spacer(Modifier.weight(1f))
-        CirclePlate(glyph = PlumeGlyph.Frame, label = "Frame the scene", onClick = onFrame)
+        CirclePlate(glyph = PlumeGlyph.Frame, label = "Frame the artwork", onClick = onFrame)
         Spacer(Modifier.width(8.dp))
         Surface(
             onClick = onAr,
@@ -370,9 +368,10 @@ private fun CanvasChrome(
             contentColor = PlumeColors.Teal,
             shape = CircleShape,
             border = androidx.compose.foundation.BorderStroke(1.dp, PlumeColors.Line),
+            modifier = Modifier.height(44.dp),
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                modifier = Modifier.padding(horizontal = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 PlumeIcon(PlumeGlyph.Ar, "Place with AR", Modifier.size(16.dp), PlumeColors.Teal)
@@ -412,7 +411,7 @@ private fun CirclePlate(
         color = PlumeColors.Panel.copy(alpha = 0.88f),
         contentColor = PlumeColors.Ivory,
         border = androidx.compose.foundation.BorderStroke(1.dp, PlumeColors.Line),
-        modifier = Modifier.size(40.dp),
+        modifier = Modifier.size(44.dp),
     ) {
         Box(contentAlignment = Alignment.Center) {
             PlumeIcon(glyph, label, Modifier.size(18.dp), PlumeColors.Ivory)
@@ -457,16 +456,17 @@ private fun BrushChip(
     val brush = state.brushes.firstOrNull { it.id == state.selectedBrush }
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(18.dp))
+            .height(44.dp)
+            .clip(RoundedCornerShape(22.dp))
             .background(PlumeColors.Panel.copy(alpha = 0.9f))
-            .border(1.dp, PlumeColors.Line, RoundedCornerShape(18.dp))
+            .border(1.dp, PlumeColors.Line, RoundedCornerShape(22.dp))
             .clickable(onClick = onClick)
-            .padding(start = 7.dp, end = 11.dp, top = 5.dp, bottom = 5.dp),
+            .padding(start = 7.dp, end = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
-                .size(width = 38.dp, height = 22.dp)
+                .size(width = 40.dp, height = 24.dp)
                 .clip(RoundedCornerShape(6.dp))
                 .background(PlumeColors.InkSoft),
             contentAlignment = Alignment.Center,
@@ -544,7 +544,7 @@ private fun BottomDock(
             )
             DockItem(
                 glyph = PlumeGlyph.Send,
-                label = "Send",
+                label = "Export",
                 active = false,
                 onClick = onExport,
                 modifier = Modifier.weight(1f),

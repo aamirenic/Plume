@@ -53,6 +53,8 @@ class PlumeViewModel(application: Application) : AndroidViewModel(application) {
     private var autosaveJob: Job? = null
     private var previewWidth = 720
     private var previewHeight = 540
+    @Volatile
+    private var pendingInitialFrame = false
     private var strokeActive = false
     private var strokePoints = 0
 
@@ -73,6 +75,7 @@ class PlumeViewModel(application: Application) : AndroidViewModel(application) {
                     .onFailure { failure ->
                         _ui.update { it.copy(status = "Could not open the demo scene: ${failure.message}") }
                     }
+                pendingInitialFrame = true
             }
             val info = runCatching { session.documentInfo() }.getOrNull()
             val brushes = runCatching { session.brushes() }.getOrDefault(emptyList())
@@ -96,7 +99,7 @@ class PlumeViewModel(application: Application) : AndroidViewModel(application) {
                 galleryThumbs = thumbs,
                 selectedBrush = info?.brushId ?: brushes.firstOrNull()?.id.orEmpty(),
                 animationDuration = duration,
-                status = if (restored != null) "Restored your last sketch" else "Ribbon Bloom is ready",
+                status = if (restored != null) "Restored your last sketch" else "Ready to draw",
                 busy = false,
                 autosavedAt = if (restored != null) autosaveFile.lastModified() else 0L,
             )
@@ -111,12 +114,22 @@ class PlumeViewModel(application: Application) : AndroidViewModel(application) {
     fun updateViewport(width: Int, height: Int) {
         if (width < 48 || height < 48) return
         runCatching { session.setViewport(width.toFloat(), height.toFloat()) }
+        // Keep the preview bitmap in the same aspect as the canvas. The
+        // initial frame path returns early, and a stale 4:3 preview would be
+        // letterboxed in a portrait canvas and make the framed artwork tiny.
         val scale = min(1.0f, 900.0f / max(width, height).toFloat())
         val newWidth = (width * scale).toInt().coerceIn(160, 900)
         val newHeight = (height * scale).toInt().coerceIn(120, 900)
         if (newWidth != previewWidth || newHeight != previewHeight) {
             previewWidth = newWidth
             previewHeight = newHeight
+        }
+        if (pendingInitialFrame) {
+            pendingInitialFrame = false
+            runCatching { session.frameScene() }
+            refreshInfo()
+            requestPreview(0)
+            return
         }
         requestPreview(40)
     }
@@ -262,6 +275,7 @@ class PlumeViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.Default) {
             runCatching { session.loadGallery(id) }
                 .onSuccess { info ->
+                    runCatching { session.frameScene() }
                     _ui.update {
                         it.copy(
                             info = info,

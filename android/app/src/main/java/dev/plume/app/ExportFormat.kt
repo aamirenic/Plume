@@ -9,7 +9,7 @@ enum class ExportFormat(
 ) {
     Plume("plume", "application/zip", "PLUME document", "Editable scene with preview"),
     Feather("feather", "application/zip", "Feather-compatible document", "Portable curve archive"),
-    Glb("glb", "model/gltf-binary", "glTF binary", "Textured-ready mesh for AR and DCC"),
+    Glb("glb", "model/gltf-binary", "glTF binary", "Texture-ready mesh for AR and DCC"),
     Gltf("gltf", "model/gltf+json", "glTF 2.0", "Embedded JSON scene"),
     Obj("obj", "text/plain", "Wavefront OBJ", "Widely supported mesh exchange"),
     Stl("stl", "model/stl", "STL", "Binary mesh for printing"),

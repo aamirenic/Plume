@@ -71,7 +71,7 @@ impl eframe::App for PlumeApp {
         }
 
         egui::Panel::left("plume.left_drawer")
-            .exact_size(232.0)
+            .exact_size(258.0)
             .frame(theme::panel_frame())
             .show(ui, |ui| self.left_drawer(ui));
 
@@ -530,8 +530,10 @@ impl PlumeApp {
                     let stats = self.doc.stats();
                     ui.label(
                         RichText::new(format!(
-                            "{} curves · {} guides · {} points",
-                            stats.curves, stats.guides, stats.control_points
+                            "{} · {} · {}",
+                            count_label(stats.curves, "curve"),
+                            count_label(stats.guides, "guide"),
+                            count_label(stats.control_points, "point")
                         ))
                         .size(10.0)
                         .color(theme::FAINT),
@@ -599,18 +601,26 @@ impl PlumeApp {
     }
 
     fn tools_panel(&mut self, ui: &mut egui::Ui) {
+        ui.spacing_mut().slider_width = 104.0;
         theme::section_label(ui, "Tools");
-        for tool in Tool::ALL {
-            if theme::tool_button(
-                ui,
-                self.tool == tool,
-                tool.icon(),
-                tool.label(),
-                tool.hint(),
-            ) {
-                self.tool = tool;
-                self.status = tool.hint().to_string();
+        let current = self.tool;
+        let mut chosen = None;
+        ui.columns(2, |columns| {
+            for (index, tool) in Tool::ALL.into_iter().enumerate() {
+                if theme::tool_button(
+                    &mut columns[index % 2],
+                    current == tool,
+                    tool.icon(),
+                    tool.label(),
+                    tool.hint(),
+                ) {
+                    chosen = Some(tool);
+                }
             }
+        });
+        if let Some(tool) = chosen {
+            self.tool = tool;
+            self.status = tool.hint().to_string();
         }
 
         theme::divider(ui);
@@ -1088,8 +1098,9 @@ impl PlumeApp {
                 }
             }
         });
+        ui.label(RichText::new("Plane offset").size(10.5).color(theme::FAINT));
         changed |= ui
-            .add(egui::Slider::new(&mut mirror.offset, -500.0..=500.0).text("Plane offset"))
+            .add(egui::Slider::new(&mut mirror.offset, -500.0..=500.0))
             .changed();
         changed |= ui
             .checkbox(&mut mirror.live, "Mirror while drawing")
@@ -1109,7 +1120,11 @@ impl PlumeApp {
         let stats = self.doc.stats();
         theme::pill(
             ui,
-            format!("{} curves · {} groups", stats.curves, stats.groups),
+            format!(
+                "{} · {}",
+                count_label(stats.curves, "curve"),
+                count_label(stats.groups, "group")
+            ),
             theme::TEAL,
         );
         ui.add_space(4.0);
@@ -3097,9 +3112,9 @@ impl PlumeApp {
                     let stats = self.doc.stats();
                     ui.label(
                         RichText::new(format!(
-                            "{} curves  ·  {} guides  ·  {:.0} mm",
-                            stats.curves,
-                            stats.guides,
+                            "{}  ·  {}  ·  {:.0} mm",
+                            count_label(stats.curves, "curve"),
+                            count_label(stats.guides, "guide"),
                             camera.distance()
                         ))
                         .size(9.5)
@@ -3276,8 +3291,16 @@ impl PlumeApp {
         );
         let stats = self.doc.stats();
         let lines = [
-            format!("{} curves   {} guides", stats.curves, stats.guides),
-            format!("{} groups   {} points", stats.groups, stats.control_points),
+            format!(
+                "{}   {}",
+                count_label(stats.curves, "curve"),
+                count_label(stats.guides, "guide")
+            ),
+            format!(
+                "{}   {}",
+                count_label(stats.groups, "group"),
+                count_label(stats.control_points, "point")
+            ),
             format!(
                 "cam {:.0}, {:.0}, {:.0}",
                 camera.position.x, camera.position.y, camera.position.z
@@ -3310,6 +3333,15 @@ fn axis_color(axis: transform::Axis) -> Color32 {
         transform::Axis::X => theme::CORAL,
         transform::Axis::Y => theme::GREEN,
         transform::Axis::Z => theme::BLUE,
+    }
+}
+
+/// Small counts read as prose in the status bar and viewport overlay.
+fn count_label(count: usize, singular: &str) -> String {
+    if count == 1 {
+        format!("{count} {singular}")
+    } else {
+        format!("{count} {singular}s")
     }
 }
 
@@ -3551,6 +3583,11 @@ impl PlumeApp {
 
 impl PlumeApp {
     fn dialogs(&mut self, ctx: &egui::Context) {
+        if self.dialog != Dialog::None {
+            // A menu opened before a keyboard shortcut can otherwise sit on
+            // top of the dialog for the rest of the session.
+            egui::Popup::close_all(ctx);
+        }
         match self.dialog {
             Dialog::Gallery => self.gallery_dialog(ctx),
             Dialog::Export => self.export_dialog(ctx),
@@ -3810,23 +3847,24 @@ impl PlumeApp {
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("Destination").size(11.0).color(theme::MUTED));
+                    let path_hint = self.export.path.clone();
                     ui.add(
                         egui::TextEdit::singleline(&mut self.export.path)
                             .desired_width(352.0)
                             .hint_text("Choose a destination inside the PLUME sandbox"),
-                    );
+                    )
+                    .on_hover_text(path_hint);
                     if ui.button("Browse…").clicked() {
                         browse = true;
                     }
                 });
+                let sandbox_hint = crate::sandbox::pretty_path(self.sandbox.root());
                 ui.label(
-                    RichText::new(format!(
-                        "Sandbox · {}",
-                        crate::sandbox::pretty_path(self.sandbox.root())
-                    ))
+                    RichText::new(format!("Sandbox · {sandbox_hint}"))
                         .size(9.0)
                         .color(theme::FAINT),
-                );
+                )
+                .on_hover_text(sandbox_hint);
 
                 theme::divider(ui);
                 if self.export.format.is_document() {

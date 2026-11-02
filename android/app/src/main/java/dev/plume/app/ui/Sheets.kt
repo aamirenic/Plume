@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -27,9 +28,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -71,13 +72,27 @@ fun PlumeSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
-                .padding(bottom = 28.dp),
+                .navigationBarsPadding()
+                .padding(bottom = 20.dp),
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.headlineMedium,
-                color = PlumeColors.Ivory,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = PlumeColors.Ivory,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = onDismiss) {
+                    Text(
+                        text = "Close",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = PlumeColors.Muted,
+                    )
+                }
+            }
             if (subtitle.isNotEmpty()) {
                 Spacer(Modifier.height(4.dp))
                 Text(
@@ -107,7 +122,7 @@ fun GallerySheet(
     ) {
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
-            modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(max = 450.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -169,10 +184,10 @@ fun BrushSheet(
     val grouped = state.brushes.groupBy { it.category }
     PlumeSheet(
         title = "Brushes",
-        subtitle = "Thirty built-in profiles share the same tapered extrusion, pattern, and pressure pipeline as the desktop studio.",
+        subtitle = "33 built-in brushes share the same tapered extrusion, pattern, and pressure pipeline as the desktop studio.",
         onDismiss = onDismiss,
     ) {
-        LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 540.dp)) {
+        LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 450.dp)) {
             grouped.forEach { (category, brushes) ->
                 item(key = "header-$category") {
                     Text(
@@ -240,7 +255,7 @@ fun ExportSheet(
     onPick: (ExportFormat) -> Unit,
 ) {
     PlumeSheet(
-        title = "Send it out",
+        title = "Export",
         subtitle = "Choose a format, then pick a destination with the system file picker. PLUME never uploads your work.",
         onDismiss = onDismiss,
     ) {

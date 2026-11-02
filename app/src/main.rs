@@ -127,6 +127,11 @@ fn render_format(path: &Path) -> Result<image::ImageFormat> {
 }
 
 fn run_gui(args: &Args) -> Result<()> {
+    #[cfg(target_os = "windows")]
+    if !software_requested() {
+        prefer_dx12_backend();
+    }
+
     let startup = args.file.as_ref().map(PathBuf::from);
     if let Some(id) = &args.gallery {
         validate_gallery(id)?;
@@ -180,6 +185,17 @@ fn software_requested() -> bool {
             "" | "0" | "false" | "off" | "no"
         ),
         Err(_) => false,
+    }
+}
+
+/// Prefer DX12 on Windows. Some Intel Vulkan drivers crash inside
+/// `igvk64.dll` during surface configuration before the first frame, while
+/// the DX12 path on the same machine is stable. Users can still override the
+/// choice with `WGPU_BACKEND` or `PLUME_SOFTWARE=1`.
+#[cfg(target_os = "windows")]
+fn prefer_dx12_backend() {
+    if std::env::var_os("WGPU_BACKEND").is_none() {
+        std::env::set_var("WGPU_BACKEND", "dx12");
     }
 }
 

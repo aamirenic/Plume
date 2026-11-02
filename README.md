@@ -60,8 +60,9 @@ brushes, not from third-party artwork.
 
 ## Quick start
 
-Prebuilt Windows binaries are published on the
-[releases page](https://github.com/aamirenic/Plume/releases).
+Prebuilt Windows binaries and the Android APK are published on the
+[releases page](https://github.com/aamirenic/Plume/releases). The project site
+is at [aamirenic.github.io/Plume](https://aamirenic.github.io/Plume/).
 
 Requirements:
 

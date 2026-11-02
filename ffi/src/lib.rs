@@ -337,10 +337,15 @@ impl PlumeSession {
         Ok(())
     }
 
-    /// Fit all visible geometry and guides into the current viewport.
+    /// Fit the visible artwork into the current viewport.  Guides can be much
+    /// larger than the sketch (the gallery stage is 900 mm wide), so frame the
+    /// curves first and fall back to every visible object for an empty scene.
     pub fn frame_scene(&self) -> Result<(), BridgeError> {
         let mut state = self.lock()?;
-        let (min, max) = state.doc.scene.bounds_visible();
+        let (min, max) = match state.doc.scene.bounds_curves_visible() {
+            Some(bounds) => bounds,
+            None => state.doc.scene.bounds_visible(),
+        };
         let aspect = state.viewport.x / state.viewport.y.max(1.0);
         state.doc.camera.frame_bounds(min, max, aspect);
         Ok(())

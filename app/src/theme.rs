@@ -227,6 +227,17 @@ pub fn color_edit(ui: &mut egui::Ui, label: &str, color: &mut Vec4) -> bool {
             *color = vec4(c, color.w);
             changed = true;
         }
+        // egui's compact picker button can render the swatch through the
+        // widget tint on some backends. Repaint the exact sRGB value inside
+        // the button so the chip and the hex readout always agree.
+        let swatch = response.rect.shrink(3.0);
+        ui.painter().rect_filled(swatch, CornerRadius::same(2), c);
+        ui.painter().rect_stroke(
+            swatch,
+            CornerRadius::same(2),
+            Stroke::new(1.0, LINE_SOFT),
+            egui::StrokeKind::Inside,
+        );
         // Keep the hex readout inside narrow inspectors instead of pushing it
         // through the panel edge. The swatch alone is enough when space is tight.
         if ui.available_width() > 52.0 {

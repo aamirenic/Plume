@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Page not found — PLUME</title>
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#08090b">
+  <link rel="icon" href="/Plume/assets/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/Plume/assets/css/site.css">
+  <style>
+    .notfound {
+      min-height: 100svh;
+      display: grid;
+      align-content: center;
+      justify-items: start;
+      gap: 22px;
+      padding: clamp(24px, 8vw, 120px);
+      background:
+        linear-gradient(180deg, rgba(216, 255, 62, 0.06), transparent 40%),
+        var(--ink);
+    }
+    .notfound .index { margin: 0; }
+    .notfound h1 {
+      margin: 0;
+      font-size: clamp(52px, 13vw, 180px);
+      line-height: 0.86;
+      letter-spacing: -0.05em;
+      text-transform: uppercase;
+    }
+    .notfound h1 span { color: var(--signal); }
+    .notfound p { max-width: 46ch; color: var(--muted); }
+    .notfound .hero-actions { margin-top: 8px; }
+    .notfound .brand { position: fixed; top: 22px; left: clamp(24px, 8vw, 120px); }
+    .notfound .rule {
+      width: min(420px, 100%);
+      height: 1px;
+      background: var(--line-strong);
+    }
+  </style>
+</head>
+<body>
+  <main class="notfound">
+    <a class="brand" href="/Plume/" aria-label="PLUME home">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" role="presentation"><path d="M7 25V7h9.2c4.7 0 7.8 2.9 7.8 7s-3.1 7-7.8 7h-4.4v4" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="square"/></svg>
+      </span>
+      <span class="brand-name">PLUME</span>
+    </a>
+
+    <p class="index">ERROR / 404</p>
+    <h1>Off the<br><span>canvas.</span></h1>
+    <div class="rule" aria-hidden="true"></div>
+    <p>This page is not part of the scene. Head back to the studio, or jump straight to the download.</p>
+    <div class="hero-actions">
+      <a class="btn btn--signal" href="/Plume/">Back to PLUME <span aria-hidden="true">↗</span></a>
+      <a class="btn btn--ghost" href="/Plume/#download">Download</a>
+    </div>
+  </main>
+</body>
+</html>

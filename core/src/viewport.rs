@@ -338,13 +338,30 @@ impl Camera {
         let center = (min + max) * 0.5;
         let radius = ((max - min).length() * 0.5).max(MIN_NEAR);
         let vfov = self.fov_y_deg.to_radians();
-        let hfov = 2.0 * ((vfov * 0.5).tan() * aspect.max(0.1)).atan();
-        let fov = vfov.min(hfov);
-        let mut dist = radius / (fov * 0.5).sin().max(0.05);
-        dist *= 1.15;
-        let dir = self.forward();
+        let tan_v = (vfov * 0.5).tan().max(0.05);
+        let tan_h = (tan_v * aspect.max(0.1)).max(0.05);
+        let (right, up, forward) = self.basis();
+
+        // Fit the projected corners instead of the bounding sphere. A wide,
+        // shallow scene has a large diagonal but a small on-screen height;
+        // sphere fitting leaves it floating in empty space, especially in a
+        // portrait viewport.
+        let mut dist = MIN_NEAR;
+        for x in [min.x, max.x] {
+            for y in [min.y, max.y] {
+                for z in [min.z, max.z] {
+                    let offset = Vec3::new(x, y, z) - center;
+                    let depth = offset.dot(forward);
+                    let dx = offset.dot(right).abs();
+                    let dy = offset.dot(up).abs();
+                    dist = dist.max(dx / tan_h - depth);
+                    dist = dist.max(dy / tan_v - depth);
+                }
+            }
+        }
+        let dist = (dist * 1.08).max(MIN_NEAR);
         self.target = center;
-        self.position = center - dir * dist;
+        self.position = center - forward * dist;
         self.near = (dist - radius * 2.0).max(0.05);
         self.far = (dist + radius * 8.0).max(self.near + 10.0);
     }
@@ -604,6 +621,22 @@ mod tests {
             let p = cam.project(corner, size());
             assert!(p.is_some());
         }
+    }
+
+    #[test]
+    fn frame_bounds_fills_a_portrait_viewport() {
+        let mut cam = Camera::default();
+        let min = Vec3::new(-80.0, -10.0, -10.0);
+        let max = Vec3::new(80.0, 10.0, 10.0);
+        let view = Vec2::new(900.0, 1200.0);
+        cam.frame_bounds(min, max, view.x / view.y);
+        let left = cam.project(Vec3::new(min.x, 0.0, 0.0), view).unwrap();
+        let right = cam.project(Vec3::new(max.x, 0.0, 0.0), view).unwrap();
+        let span = (right.x - left.x).abs() / view.x;
+        assert!(
+            span > 0.65,
+            "wide scene should fill most of a portrait viewport, got {span}"
+        );
     }
 
     #[test]
