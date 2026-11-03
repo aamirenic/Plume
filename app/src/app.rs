@@ -386,6 +386,15 @@ impl InspectorTab {
     }
 }
 
+/// The editor has two legitimate shells: the floating canvas-first workspace
+/// that mirrors Feather's interaction language, and the original multi-panel
+/// studio for people who want every control on screen at once.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Workspace {
+    Floating,
+    Studio,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExportFormat {
     Plume,
@@ -622,6 +631,7 @@ pub struct PlumeApp {
     pub tool: Tool,
     pub settings: ToolSettings,
     pub left_tab: LeftTab,
+    pub workspace: Workspace,
     pub sandbox: Sandbox,
     pub path: Option<PathBuf>,
     pub dirty: bool,
@@ -720,6 +730,7 @@ impl PlumeApp {
             tool: Tool::Brush,
             settings: ToolSettings::default(),
             left_tab: LeftTab::Tools,
+            workspace: Workspace::Floating,
             sandbox,
             path,
             dirty: false,
@@ -762,8 +773,8 @@ impl PlumeApp {
             renderer,
             quality: MeshQuality::Normal,
             show_guides: true,
-            show_stats: true,
-            show_timeline: true,
+            show_stats: false,
+            show_timeline: false,
             startup_error,
             app_started: cc.egui_ctx.input(|i| i.time),
             timeline_drag: false,

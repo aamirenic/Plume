@@ -308,38 +308,39 @@
     <section class="section section--interface">
       <div class="interface-copy">
         <p class="index">04 / INTERFACE</p>
-        <h2>Built for the hand.<br>Tuned for the eye.</h2>
-        <p class="section-lede">The desktop studio keeps the viewport large, the brush shelf close, and the inspector quiet. Every panel is keyboard-reachable, every tool has a visible state, and the render is always one click away.</p>
+        <h2>A canvas,<br>not a cockpit.</h2>
+        <p class="section-lede">PLUME opens on the artwork. The floating shell keeps only what you need within reach: brushes, colour, size and opacity on the left, quick tools at the top right, and the 3D stage guide at the bottom. Open the inspector or brush library in place; switch to the Studio workspace when you want every panel at once.</p>
         <ul class="interface-list">
-          <li><span>01</span><div><b>Viewport-first layout</b><p>Orbit, pan, frame selection, and frame visible artwork without losing the scene.</p></div></li>
-          <li><span>02</span><div><b>Brush shelf + inspector</b><p>33 brushes, pressure, taper, cross-section, material, and transform in one place.</p></div></li>
-          <li><span>03</span><div><b>Timeline + capture</b><p>Camera keyframes, shots, scrubbing, and GIF/MP4 capture from the same timeline.</p></div></li>
-          <li><span>04</span><div><b>Export without leaving</b><p>Model, still, or turntable — the document is the source for every output.</p></div></li>
+          <li><span>01</span><div><b>Canvas-first shell</b><p>Home, menu, and quick tools float over the render instead of framing it. The artwork gets the window.</p></div></li>
+          <li><span>02</span><div><b>Brush rail + inspector</b><p>33 brushes, pressure, taper, cross-section, material, and transform open contextually from the rail.</p></div></li>
+          <li><span>03</span><div><b>Studio workspace</b><p>Bring back the full tool shelf, inspector, timeline, and menus whenever the job calls for them.</p></div></li>
+          <li><span>04</span><div><b>Timeline + capture</b><p>Camera keyframes, shots, scrubbing, and GIF/MP4 capture from the same timeline.</p></div></li>
         </ul>
       </div>
 
       <figure class="interface-shot">
         <div class="interface-frame">
-          <img src="assets/img/desktop-studio.webp" width="1200" height="600" alt="PLUME Studio desktop interface showing the Ribbon Bloom scene, tool shelf, viewport, inspector, and timeline." loading="lazy">
-          <span class="interface-tag interface-tag--1">VIEWPORT</span>
-          <span class="interface-tag interface-tag--2">BRUSHES</span>
-          <span class="interface-tag interface-tag--3">INSPECTOR</span>
-          <span class="interface-tag interface-tag--4">TIMELINE</span>
+          <img src="assets/img/desktop-floating.webp" width="1200" height="600" alt="PLUME's canvas-first floating shell over the Ribbon Bloom scene, with paper chrome, a brush rail, quick tools, and a 3D stage guide." loading="lazy">
+          <span class="interface-tag interface-tag--1">CANVAS</span>
+          <span class="interface-tag interface-tag--2">BRUSH RAIL</span>
+          <span class="interface-tag interface-tag--3">QUICK TOOLS</span>
+          <span class="interface-tag interface-tag--4">3D GUIDE</span>
         </div>
         <div class="interface-inset">
           <img src="assets/img/scene-gallery.webp" width="1296" height="719" alt="PLUME's in-app scene gallery with eight built-in scenes." loading="lazy">
           <span>SCENE GALLERY / 8 BUILT-IN SCENES</span>
         </div>
-        <figcaption><span>PLUME STUDIO</span><span>RIBBON BLOOM / DX12</span></figcaption>
+        <figcaption><span>PLUME / FLOATING SHELL</span><span>RIBBON BLOOM / DX12</span></figcaption>
       </figure>
     </section>
 
     <section class="section section--android" id="android">
       <div class="android-copy">
         <p class="index">05 / MOBILE</p>
-        <h2>The same engine,<br>in your hand.</h2>
-        <p class="section-lede">PLUME for Android is a Kotlin/Jetpack Compose shell over the same Rust document model. Draw with pressure, orbit with two fingers, pan with three, and place the sketch on a table with ARCore.</p>
+        <h2>The same shell,<br>in your hand.</h2>
+        <p class="section-lede">PLUME for Android is a Kotlin/Jetpack Compose shell over the same Rust document model. It carries the desktop's canvas-first language onto touch: paper chrome floating over the ink canvas, a home and menu capsule, quick undo/frame/export tools, a brush rail, and a 3D stage menu.</p>
         <ul class="android-list">
+          <li>Canvas-first floating controls with a clean, dark viewport.</li>
           <li>Touch drawing with pressure and tap-to-erase.</li>
           <li>Two-finger orbit and pinch; three-finger pan.</li>
           <li>Gallery, brush browser, undo/redo, timeline scrub, and autosave.</li>
@@ -352,13 +353,13 @@
         <p class="note">Debug-signed preview. Requires Android 8.0+ and a 64-bit device. ARCore placement needs a supported device and Google Play Services for AR.</p>
       </div>
 
-      <div class="phone-stage" aria-hidden="true">
+      <div class="phone-stage">
         <div class="phone">
           <div class="phone-screen">
-            <img class="phone-shot" src="assets/img/android-editor.webp" width="540" height="1200" alt="PLUME for Android showing the Ribbon Bloom scene, brush chip, frame and AR controls, timeline, and export dock." loading="lazy">
+            <img class="phone-shot" src="assets/img/android-editor.webp" width="540" height="1152" alt="PLUME for Android's canvas-first floating shell over the Ribbon Bloom scene, with home and menu capsule, quick tools, brush rail, 3D stage guide, and status capsule." loading="lazy">
           </div>
         </div>
-        <span class="phone-label">PLUME / ANDROID / RIBBON BLOOM</span>
+        <span class="phone-label">PLUME / ANDROID / FLOATING SHELL</span>
       </div>
     </section>
 
@@ -374,24 +375,24 @@
           <span class="platform">WINDOWS / x86_64</span>
           <h3>PLUME Studio</h3>
           <p>The full desktop editor: 33 brushes, guides, HDR renderer, animation, and model/media export.</p>
-          <a class="btn btn--signal btn--wide" href="https://github.com/aamirenic/Plume/releases/download/v0.1.0/plume-windows-x86_64.exe" download>Download .exe <span>14.0 MB</span></a>
+          <a class="btn btn--signal btn--wide" href="https://github.com/aamirenic/Plume/releases/download/v0.1.0/plume-windows-x86_64.exe" download>Download .exe <span>14.2 MB</span></a>
           <dl class="file-meta">
             <div><dt>VERSION</dt><dd>0.1.0</dd></div>
             <div><dt>REQUIRES</dt><dd>Windows 10/11</dd></div>
-            <div><dt>SHA-256</dt><dd><button class="copy-hash" type="button" data-copy="8824CB31DEDCCFA5C050C9E70301FAEDBEE09717888D29C0FB64DE6328D8FB0B" aria-label="Copy the Windows SHA-256 checksum">8824…0B0B <span aria-hidden="true">⧉</span></button></dd></div>
+            <div><dt>SHA-256</dt><dd><button class="copy-hash" type="button" data-copy="BF3368C7C4B29E50BB43AAC2B8DA416B742FA138DC5AEA7312C3C0199BFA169F" aria-label="Copy the Windows SHA-256 checksum">BF33…169F <span aria-hidden="true">⧉</span></button></dd></div>
           </dl>
         </article>
 
         <article class="download-card">
           <span class="platform">ANDROID / ARM64 + X86_64</span>
           <h3>PLUME Mobile</h3>
-          <p>The Compose editor over the same Rust engine, with touch drawing, autosave, SAF export, and ARCore placement.</p>
+          <p>The Compose editor over the same Rust engine, with a canvas-first floating shell, touch drawing, autosave, SAF export, and ARCore placement.</p>
           <a class="btn btn--ghost btn--wide" href="https://github.com/aamirenic/Plume/releases/download/v0.1.0/plume-android-0.1.0-debug.apk" download>Download .apk <span>15.8 MB</span></a>
           <dl class="file-meta">
             <div><dt>VERSION</dt><dd>0.1.0</dd></div>
             <div><dt>REQUIRES</dt><dd>Android 8.0+</dd></div>
             <div><dt>SIGNING</dt><dd>Debug preview</dd></div>
-            <div><dt>SHA-256</dt><dd><button class="copy-hash" type="button" data-copy="5C1754AF529E6EF223476CE67F08F5409751F1C286F7DEB99BCD3384977257EF" aria-label="Copy the Android SHA-256 checksum">5C17…57EF <span aria-hidden="true">⧉</span></button></dd></div>
+            <div><dt>SHA-256</dt><dd><button class="copy-hash" type="button" data-copy="0BE7E7EE963B47E4C286FF8834BAA80BD023FDDF7AD75DDFF7023D125672671E" aria-label="Copy the Android SHA-256 checksum">0BE7…671E <span aria-hidden="true">⧉</span></button></dd></div>
           </dl>
         </article>
 

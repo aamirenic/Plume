@@ -74,12 +74,12 @@ fun PlumeCanvas(
                 Text(
                     text = "The stage is empty",
                     style = MaterialTheme.typography.titleMedium,
-                    color = PlumeColors.Ivory,
+                    color = PlumeColors.CanvasText,
                 )
                 Text(
                     text = "Drag a stroke, or open the gallery for a starting scene.",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = PlumeColors.Muted,
+                    color = PlumeColors.CanvasMuted,
                 )
             }
         }

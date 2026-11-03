@@ -6,8 +6,9 @@ product shot, and export a model, still or turntable.
 
 The repository contains two shells over one Rust engine:
 
-- **PLUME Studio** — a Rust/wgpu desktop editor with an offscreen HDR renderer,
-  33 brushes, guides, liquify, groups, animation and model/media export.
+- **PLUME Studio** — a Rust/wgpu desktop editor with a canvas-first floating
+  shell, a full Studio workspace, an offscreen HDR renderer, 33 brushes, guides,
+  liquify, groups, animation and model/media export.
 - **PLUME for Android** — a Kotlin/Jetpack Compose touch editor and ARCore
   placement view backed by the same `plume-core` document model through UniFFI.
 
@@ -16,13 +17,15 @@ artwork, icons, fonts, binaries or presets. See [NOTICE.md](NOTICE.md).
 
 ## Screenshots
 
-| Desktop studio | Scene gallery |
+| Canvas-first shell | Brush library |
 | --- | --- |
-| ![PLUME desktop studio showing the Ribbon Bloom gallery scene](docs/renders/desktop-studio.png) | ![PLUME scene gallery](docs/renders/scene-gallery.png) |
+| ![PLUME's floating shell over the Ribbon Bloom scene, with paper chrome, a brush rail, quick tools, and a 3D stage guide](docs/renders/desktop-floating.png) | ![PLUME's brush library popover with the 33-brush catalogue and scrollable categories](docs/renders/desktop-brushes.png) |
 
-| Explicit import units | Unsaved-changes protection |
+| Studio workspace | Inspector |
 | --- | --- |
-| ![PLUME import unit selector](docs/renders/import-units.png) | ![PLUME unsaved-changes prompt](docs/renders/unsaved-changes.png) |
+| ![PLUME's Studio workspace with the tool shelf, viewport, inspector, and scene status](docs/renders/desktop-studio.png) | ![PLUME's floating inspector with brush, opacity, taper, and cross-section controls](docs/renders/desktop-inspector.png) |
+
+<img src="docs/renders/android-floating.png" width="300" alt="PLUME for Android's canvas-first floating shell over the Ribbon Bloom scene, with home and menu capsule, quick tools, brush rail, 3D stage guide, and status capsule.">
 
 All eight built-in scenes are rendered by the headless renderer in
 [`docs/renders/`](docs/renders/). They are generated from PLUME curves and
@@ -30,6 +33,11 @@ brushes, not from third-party artwork.
 
 ## Highlights
 
+- **Canvas first, studio within reach.** The default shell floats paper chrome
+  over the ink canvas: home and menu at the top left, quick tools at the top
+  right, a brush rail on the left, a 3D stage guide at the bottom, and a
+  contextual inspector. The original multi-panel Studio workspace remains one
+  menu click away for power users.
 - **Curves that behave like ribbons and tubes.** Catmull-Rom and circular
   strokes, rotation-minimising frames, pressure taper, round/flat/custom
   cross-sections and adaptive extrusion.
@@ -54,9 +62,11 @@ brushes, not from third-party artwork.
   guessing.
 - **Desktop recovery.** Autosave writes a recovery package every 10 s while the
   document is dirty and offers Recover work or Discard on the next plain launch.
-- **Mobile authoring.** Touch drawing with pressure, orbit/pinch/pan, gallery,
-  brush browser, undo/redo, animation scrubbing, autosave, SAF export and ARCore
-  tabletop placement without Sceneform.
+- **Mobile authoring.** The same canvas-first floating controls on touch:
+  home/menu capsule, quick undo/frame/export tools, brush rail, 3D stage menu,
+  touch drawing with pressure, orbit/pinch/pan, gallery, brush browser,
+  undo/redo, animation scrubbing, autosave, SAF export and ARCore tabletop
+  placement without Sceneform.
 
 ## Quick start
 
@@ -202,6 +212,10 @@ has been run on a Windows DX12 adapter and the software wgpu fallback; hardware
 coverage beyond that depends on the host driver.
 
 ## Android
+
+PLUME for Android shares the desktop's canvas-first shell: paper chrome floats
+over the ink canvas, with a home/menu capsule, quick undo/frame/export tools, a
+brush rail, a 3D stage menu, and an optional timeline.
 
 ```bash
 # Native bridge (once per ABI)

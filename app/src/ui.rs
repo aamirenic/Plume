@@ -1,17 +1,18 @@
 //! PLUME's editor interface.
 //!
-//! The layout is deliberately recognisable without imitating another product:
-//! a wordmark and command strip at the top, four workshop drawers on the left,
-//! a context inspector on the right, a render surface in the middle and a
-//! transport strip below.  Everything is painted from egui primitives and the
-//! procedural helpers in [`crate::theme`]; no external UI assets are used.
+//! The default shell is canvas-first, following Feather's interaction language:
+//! floating pale chrome at the corners, a brush/colour rail on the left, a
+//! compact tool strip on the right and contextual paper popovers. The original
+//! multi-panel studio remains available through the menu for power users.
+//! Everything is painted from egui primitives and the procedural helpers in
+//! [`crate::theme`]; no external UI assets are used.
 
 use std::time::Duration;
 
 use eframe::egui;
 use egui::{
-    Align, Align2, Color32, CornerRadius, FontId, Frame, Id, Layout, Pos2, Rect, RichText, Sense,
-    Stroke, StrokeKind, UiBuilder, Vec2,
+    Align, Align2, Color32, CornerRadius, FontId, Frame, Id, Layout, Order, Pos2, Rect, RectAlign,
+    RichText, Sense, Stroke, StrokeKind, UiBuilder, Vec2,
 };
 use plume_core::animation::{Easing, TurntableAxis};
 use plume_core::brush::{Brush, BrushCategory, ProfileShape};
@@ -25,7 +26,7 @@ use plume_core::{CurveId, GuideId, Vec3};
 
 use crate::app::{
     ConfirmAction, Dialog, ExportFormat, ImportUnit, InspectorTab, LeftTab, PlumeApp, Tool,
-    WindowParent,
+    WindowParent, Workspace,
 };
 use crate::theme;
 
@@ -47,6 +48,27 @@ impl eframe::App for PlumeApp {
             self.handle_shortcuts(&ctx);
         }
 
+        match self.workspace {
+            Workspace::Floating => self.floating_ui(ui),
+            Workspace::Studio => self.studio_ui(ui),
+        }
+
+        self.dialogs(&ctx);
+        self.show_toast(&ctx);
+        self.finish_ui_frame(&ctx);
+
+        if self.doc.animation.playing || self.media.is_some() {
+            ctx.request_repaint_after(Duration::from_millis(16));
+        } else if self.toast.is_some() {
+            ctx.request_repaint_after(Duration::from_millis(140));
+        }
+    }
+}
+
+impl PlumeApp {
+    /// The original four-drawer workshop. Kept intact as an explicit advanced
+    /// mode so no PLUME capability is hidden by the Feather-like shell.
+    fn studio_ui(&mut self, ui: &mut egui::Ui) {
         egui::Panel::top("plume.top_bar")
             .exact_size(54.0)
             .frame(theme::bar_frame())
@@ -78,19 +100,21 @@ impl eframe::App for PlumeApp {
         egui::Panel::right("plume.inspector")
             .exact_size(308.0)
             .frame(theme::panel_frame())
-            .show(ui, |ui| self.inspector(ui));
+            .show(ui, |ui| self.inspector(ui, None));
 
-        egui::CentralPanel::no_frame().show(ui, |ui| self.viewport(ui));
+        egui::CentralPanel::no_frame().show(ui, |ui| self.viewport(ui, false));
+    }
 
-        self.dialogs(&ctx);
-        self.show_toast(&ctx);
-        self.finish_ui_frame(&ctx);
-
-        if self.doc.animation.playing || self.media.is_some() {
-            ctx.request_repaint_after(Duration::from_millis(16));
-        } else if self.toast.is_some() {
-            ctx.request_repaint_after(Duration::from_millis(140));
-        }
+    /// Canvas-first shell. All persistent chrome floats above the render.
+    fn floating_ui(&mut self, ui: &mut egui::Ui) {
+        egui::CentralPanel::no_frame().show(ui, |ui| self.viewport(ui, true));
+        let ctx = ui.ctx().clone();
+        self.shell_home_and_menu(&ctx);
+        self.shell_tool_strip(&ctx);
+        self.shell_left_rail(&ctx);
+        self.shell_bottom_guide(&ctx);
+        self.shell_status(&ctx);
+        self.shell_timeline(&ctx);
     }
 }
 
@@ -389,6 +413,15 @@ impl PlumeApp {
 
             ui.menu_button("View", |ui| {
                 if ui
+                    .button("Floating workspace")
+                    .on_hover_text("Return to the canvas-first Feather-like shell")
+                    .clicked()
+                {
+                    self.workspace = Workspace::Floating;
+                    ui.close();
+                }
+                ui.separator();
+                if ui
                     .checkbox(&mut self.show_guides, "Construction guides")
                     .changed()
                 {
@@ -486,6 +519,757 @@ impl PlumeApp {
                 }
             });
         });
+    }
+
+    // -- floating shell -----------------------------------------------------
+
+    fn shell_home_and_menu(&mut self, ctx: &egui::Context) {
+        egui::Area::new(Id::unique("plume.shell.home"))
+            .order(Order::Foreground)
+            .fixed_pos(ctx.content_rect().left_top() + Vec2::new(16.0, 14.0))
+            .show(ctx, |ui| {
+                theme::chrome_frame().show(ui, |ui| {
+                    ui.spacing_mut().item_spacing = Vec2::new(2.0, 0.0);
+                    ui.horizontal(|ui| {
+                        let home = theme::chrome_icon(
+                            ui,
+                            theme::Icon::Home,
+                            34.0,
+                            false,
+                            "Home — open the scene gallery",
+                        );
+                        if home.clicked() {
+                            self.dialog = Dialog::Gallery;
+                        }
+                        let (rule, _) =
+                            ui.allocate_exact_size(Vec2::new(1.0, 20.0), Sense::hover());
+                        ui.painter().vline(
+                            rule.center().x,
+                            rule.y_range(),
+                            Stroke::new(1.0, theme::LINE_SOFT),
+                        );
+                        let menu =
+                            theme::chrome_icon(ui, theme::Icon::Menu, 34.0, false, "PLUME menu");
+                        egui::Popup::menu(&menu)
+                            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                            .width(296.0)
+                            .frame(theme::popover_frame())
+                            .show(|ui| self.shell_menu(ui));
+                    });
+                });
+            });
+    }
+
+    fn shell_menu(&mut self, ui: &mut egui::Ui) {
+        let tab_id = Id::unique("plume.shell.menu.tab");
+        let mut tab = ui
+            .ctx()
+            .data(|data| data.get_temp::<u8>(tab_id).unwrap_or(0));
+        let name = if self.doc.name.trim().is_empty() {
+            "Untitled"
+        } else {
+            self.doc.name.as_str()
+        };
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(name).size(13.5).strong().color(theme::IVORY));
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                theme::pill(
+                    ui,
+                    if self.dirty { "Unsaved" } else { "Saved" },
+                    if self.dirty {
+                        theme::GOLD
+                    } else {
+                        theme::GREEN
+                    },
+                );
+            });
+        });
+        ui.label(
+            RichText::new("Canvas-first workspace · Studio mode is always available")
+                .size(9.5)
+                .color(theme::FAINT),
+        );
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 2.0;
+            for (value, label) in [(0_u8, "File"), (1, "View"), (2, "Control")] {
+                let selected = tab == value;
+                let response = ui.add(
+                    egui::Button::new(RichText::new(label).size(11.0).color(if selected {
+                        theme::INK
+                    } else {
+                        theme::MUTED
+                    }))
+                    .fill(if selected {
+                        theme::PANEL_HIGH
+                    } else {
+                        Color32::TRANSPARENT
+                    })
+                    .stroke(Stroke::NONE)
+                    .corner_radius(CornerRadius::same(7))
+                    .min_size(Vec2::new(62.0, 26.0)),
+                );
+                if response.clicked() {
+                    tab = value;
+                }
+            }
+        });
+        ui.ctx().data_mut(|data| data.insert_temp(tab_id, tab));
+        theme::divider(ui);
+
+        match tab {
+            0 => {
+                if menu_row(ui, "New scene", "Ctrl+N") {
+                    self.request_new();
+                    egui::Popup::close_all(ui.ctx());
+                }
+                if menu_row(ui, "Open scene…", "Ctrl+O") {
+                    self.request_open();
+                    egui::Popup::close_all(ui.ctx());
+                }
+                if self.has_unclaimed_autosave() && menu_row(ui, "Recover autosave…", "Recovery")
+                {
+                    self.request_recover_autosave();
+                    egui::Popup::close_all(ui.ctx());
+                }
+                if menu_row(ui, "Save", "Ctrl+S") {
+                    self.save_current();
+                    egui::Popup::close_all(ui.ctx());
+                }
+                if menu_row(ui, "Save as…", "Ctrl+Shift+S") {
+                    self.save_as();
+                    egui::Popup::close_all(ui.ctx());
+                }
+                ui.add_space(3.0);
+                if menu_row(ui, "Scene gallery…", "Home") {
+                    self.dialog = Dialog::Gallery;
+                    egui::Popup::close_all(ui.ctx());
+                }
+                if menu_row(ui, "Import mesh as guides…", "") {
+                    self.import_mesh_dialog();
+                    egui::Popup::close_all(ui.ctx());
+                }
+                if menu_row(ui, "Export…", "Ctrl+E") {
+                    self.dialog = Dialog::Export;
+                    egui::Popup::close_all(ui.ctx());
+                }
+                ui.add_space(3.0);
+                if menu_row(ui, "Quit PLUME", "") {
+                    self.request_quit();
+                    egui::Popup::close_all(ui.ctx());
+                }
+            }
+            1 => {
+                if menu_row(ui, "Frame selection", "F") {
+                    self.frame_selection();
+                    egui::Popup::close_all(ui.ctx());
+                }
+                if menu_row(ui, "Frame scene", "Home") {
+                    self.frame_view();
+                    egui::Popup::close_all(ui.ctx());
+                }
+                if menu_row(ui, "Frame artwork", "Shift+Home") {
+                    self.frame_artwork();
+                    egui::Popup::close_all(ui.ctx());
+                }
+                ui.add_space(3.0);
+                if ui
+                    .checkbox(&mut self.show_guides, "Construction guides")
+                    .changed()
+                {
+                    self.needs_render = true;
+                }
+                if ui
+                    .checkbox(&mut self.show_stats, "Viewport statistics")
+                    .changed()
+                {
+                    self.needs_render = true;
+                }
+                ui.checkbox(&mut self.show_timeline, "Timeline and playback");
+                ui.add_space(4.0);
+                ui.label(
+                    RichText::new("SNAP VIEW")
+                        .size(9.0)
+                        .strong()
+                        .color(theme::FAINT),
+                );
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing.x = 3.0;
+                    for snap in [
+                        ViewSnap::Perspective,
+                        ViewSnap::Top,
+                        ViewSnap::Bottom,
+                        ViewSnap::Front,
+                        ViewSnap::Rear,
+                        ViewSnap::Left,
+                        ViewSnap::Right,
+                    ] {
+                        if ui
+                            .add(
+                                egui::Button::new(RichText::new(snap.label()).size(10.5))
+                                    .min_size(Vec2::new(62.0, 24.0)),
+                            )
+                            .clicked()
+                        {
+                            self.snap_view(snap);
+                            egui::Popup::close_all(ui.ctx());
+                        }
+                    }
+                });
+            }
+            _ => {
+                ui.label(
+                    RichText::new("WORKSPACE")
+                        .size(9.0)
+                        .strong()
+                        .color(theme::FAINT),
+                );
+                if menu_row(
+                    ui,
+                    "Floating shell",
+                    if self.workspace == Workspace::Floating {
+                        "Current"
+                    } else {
+                        ""
+                    },
+                ) {
+                    self.workspace = Workspace::Floating;
+                    egui::Popup::close_all(ui.ctx());
+                }
+                if menu_row(
+                    ui,
+                    "Studio workspace",
+                    if self.workspace == Workspace::Studio {
+                        "Current"
+                    } else {
+                        ""
+                    },
+                ) {
+                    self.workspace = Workspace::Studio;
+                    egui::Popup::close_all(ui.ctx());
+                }
+                ui.add_space(4.0);
+                ui.checkbox(&mut self.show_timeline, "Timeline and playback");
+                if ui
+                    .checkbox(&mut self.show_stats, "Viewport statistics")
+                    .changed()
+                {
+                    self.needs_render = true;
+                }
+                if ui
+                    .checkbox(&mut self.show_guides, "Construction guides")
+                    .changed()
+                {
+                    self.needs_render = true;
+                }
+                if ui
+                    .checkbox(&mut self.doc.render.grid, "Ground grid")
+                    .changed()
+                {
+                    self.needs_render = true;
+                }
+                ui.add_space(4.0);
+                if menu_row(ui, "Quick start and shortcuts", "") {
+                    self.dialog = Dialog::Help;
+                    egui::Popup::close_all(ui.ctx());
+                }
+                if menu_row(ui, "About PLUME", "") {
+                    self.dialog = Dialog::About;
+                    egui::Popup::close_all(ui.ctx());
+                }
+            }
+        }
+    }
+
+    fn shell_tool_strip(&mut self, ctx: &egui::Context) {
+        egui::Area::new(Id::unique("plume.shell.tool_strip"))
+            .order(Order::Foreground)
+            .anchor(Align2::RIGHT_TOP, Vec2::new(-16.0, 14.0))
+            .show(ctx, |ui| {
+                theme::chrome_frame().show(ui, |ui| {
+                    ui.spacing_mut().item_spacing = Vec2::new(2.0, 0.0);
+                    ui.horizontal(|ui| {
+                        let guides =
+                            theme::chrome_icon(ui, theme::Icon::Guide, 34.0, false, "3D guides");
+                        egui::Popup::from_toggle_button_response(&guides)
+                            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                            .align(RectAlign::BOTTOM_END)
+                            .width(326.0)
+                            .frame(theme::popover_frame())
+                            .show(|ui| self.shell_guides_popup(ui));
+
+                        let layers =
+                            theme::chrome_icon(ui, theme::Icon::Layers, 34.0, false, "Layers");
+                        egui::Popup::from_toggle_button_response(&layers)
+                            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                            .align(RectAlign::BOTTOM_END)
+                            .width(310.0)
+                            .frame(theme::popover_frame())
+                            .show(|ui| self.shell_layers_popup(ui));
+
+                        if theme::chrome_icon(
+                            ui,
+                            if self.doc.animation.playing {
+                                theme::Icon::Pause
+                            } else {
+                                theme::Icon::Play
+                            },
+                            34.0,
+                            self.show_timeline,
+                            "Timeline and playback",
+                        )
+                        .clicked()
+                        {
+                            self.show_timeline = !self.show_timeline;
+                        }
+
+                        if theme::chrome_icon(
+                            ui,
+                            theme::Icon::Camera,
+                            34.0,
+                            self.dialog == Dialog::Export,
+                            "Export",
+                        )
+                        .clicked()
+                        {
+                            self.dialog = Dialog::Export;
+                        }
+
+                        if theme::chrome_icon(
+                            ui,
+                            theme::Icon::Grid,
+                            34.0,
+                            self.dialog == Dialog::Gallery,
+                            "Scene gallery",
+                        )
+                        .clicked()
+                        {
+                            self.dialog = Dialog::Gallery;
+                        }
+
+                        let inspector =
+                            theme::chrome_icon(ui, theme::Icon::Sliders, 34.0, false, "Inspector");
+                        egui::Popup::from_toggle_button_response(&inspector)
+                            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                            .align(RectAlign::BOTTOM_END)
+                            .width(334.0)
+                            .frame(theme::popover_frame())
+                            .show(|ui| self.shell_inspector_popup(ui));
+                    });
+                });
+            });
+    }
+
+    fn shell_left_rail(&mut self, ctx: &egui::Context) {
+        egui::Area::new(Id::unique("plume.shell.left_rail"))
+            .order(Order::Foreground)
+            .fixed_pos(ctx.content_rect().left_top() + Vec2::new(16.0, 70.0))
+            .show(ctx, |ui| {
+                ui.vertical(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::new(0.0, 5.0);
+                    theme::chrome_frame().show(ui, |ui| {
+                        ui.spacing_mut().item_spacing = Vec2::new(0.0, 5.0);
+                        ui.vertical_centered(|ui| {
+                            let brush = self.current_brush();
+                            let tool = theme::chrome_icon(
+                                ui,
+                                self.tool.icon(),
+                                40.0,
+                                false,
+                                "Tools — line, shape, guide and transform tools",
+                            );
+                            if tool.clicked() {
+                                self.left_tab = LeftTab::Tools;
+                            }
+                            egui::Popup::from_toggle_button_response(&tool)
+                                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                                .align(RectAlign::RIGHT_START)
+                                .width(304.0)
+                                .frame(theme::popover_frame())
+                                .show(|ui| {
+                                    self.left_tab = LeftTab::Tools;
+                                    self.shell_drawer(ui);
+                                });
+
+                            let brush_chip = rail_brush(ui, &brush);
+                            if brush_chip.clicked() {
+                                self.left_tab = LeftTab::Brushes;
+                            }
+                            egui::Popup::from_toggle_button_response(&brush_chip)
+                                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                                .align(RectAlign::RIGHT_START)
+                                .width(310.0)
+                                .frame(theme::popover_frame())
+                                .show(|ui| {
+                                    self.left_tab = LeftTab::Brushes;
+                                    self.shell_drawer(ui);
+                                });
+
+                            let colour = rail_colour(ui, &brush);
+                            if colour.clicked() {
+                                self.inspector = InspectorTab::Style;
+                            }
+                            egui::Popup::from_toggle_button_response(&colour)
+                                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                                .align(RectAlign::RIGHT_START)
+                                .width(334.0)
+                                .frame(theme::popover_frame())
+                                .show(|ui| self.shell_inspector_popup(ui));
+
+                            let size = rail_size(ui, self.settings.size);
+                            egui::Popup::from_toggle_button_response(&size)
+                                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                                .align(RectAlign::RIGHT_START)
+                                .width(240.0)
+                                .frame(theme::popover_frame())
+                                .show(|ui| {
+                                    ui.label(
+                                        RichText::new("Brush size")
+                                            .size(13.0)
+                                            .strong()
+                                            .color(theme::IVORY),
+                                    );
+                                    ui.label(
+                                        RichText::new("Stroke diameter in millimetres")
+                                            .size(9.5)
+                                            .color(theme::FAINT),
+                                    );
+                                    ui.add(
+                                        egui::Slider::new(&mut self.settings.size, 0.2..=80.0)
+                                            .logarithmic(true)
+                                            .suffix(" mm"),
+                                    );
+                                    ui.horizontal_wrapped(|ui| {
+                                        ui.spacing_mut().item_spacing.x = 3.0;
+                                        for preset in [0.8_f32, 2.0, 4.0, 8.0, 16.0, 32.0] {
+                                            if ui
+                                                .selectable_label(
+                                                    (self.settings.size - preset).abs() < 0.05,
+                                                    format!("{preset:.0}"),
+                                                )
+                                                .clicked()
+                                            {
+                                                self.settings.size = preset;
+                                            }
+                                        }
+                                    });
+                                    ui.label(
+                                        RichText::new("[ and ] also change the size")
+                                            .size(9.0)
+                                            .color(theme::FAINT),
+                                    );
+                                });
+
+                            let opacity = rail_opacity(ui, brush.opacity);
+                            egui::Popup::from_toggle_button_response(&opacity)
+                                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                                .align(RectAlign::RIGHT_START)
+                                .width(240.0)
+                                .frame(theme::popover_frame())
+                                .show(|ui| {
+                                    let mut brush = self.current_brush();
+                                    let before = brush.opacity;
+                                    ui.label(
+                                        RichText::new("Brush opacity")
+                                            .size(13.0)
+                                            .strong()
+                                            .color(theme::IVORY),
+                                    );
+                                    ui.label(
+                                        RichText::new("How much ink each stroke lays down")
+                                            .size(9.5)
+                                            .color(theme::FAINT),
+                                    );
+                                    if ui
+                                        .add(
+                                            egui::Slider::new(&mut brush.opacity, 0.0..=1.0)
+                                                .text("Opacity"),
+                                        )
+                                        .changed()
+                                    {
+                                        if let Some(target) = self
+                                            .library
+                                            .brushes
+                                            .iter_mut()
+                                            .find(|candidate| candidate.id == brush.id)
+                                        {
+                                            *target = brush.clone();
+                                        }
+                                        self.note_ui_edit("Brush opacity");
+                                        self.needs_render = true;
+                                    }
+                                    let _ = before;
+                                });
+
+                            if theme::chrome_icon(
+                                ui,
+                                theme::Icon::Move,
+                                36.0,
+                                self.tool == Tool::Move,
+                                "Transform selection",
+                            )
+                            .clicked()
+                            {
+                                self.tool = Tool::Move;
+                                self.status = Tool::Move.hint().to_string();
+                            }
+                        });
+                    });
+                    theme::chrome_frame().show(ui, |ui| {
+                        ui.spacing_mut().item_spacing = Vec2::new(0.0, 3.0);
+                        ui.vertical_centered(|ui| {
+                            ui.add_enabled_ui(self.history.can_undo(), |ui| {
+                                if theme::chrome_icon(
+                                    ui,
+                                    theme::Icon::Undo,
+                                    34.0,
+                                    false,
+                                    "Undo (Ctrl+Z)",
+                                )
+                                .clicked()
+                                {
+                                    self.undo();
+                                }
+                            });
+                            ui.add_enabled_ui(self.history.can_redo(), |ui| {
+                                if theme::chrome_icon(
+                                    ui,
+                                    theme::Icon::Redo,
+                                    34.0,
+                                    false,
+                                    "Redo (Ctrl+Y)",
+                                )
+                                .clicked()
+                                {
+                                    self.redo();
+                                }
+                            });
+                        });
+                    });
+                });
+            });
+    }
+
+    fn shell_bottom_guide(&mut self, ctx: &egui::Context) {
+        egui::Area::new(Id::unique("plume.shell.guide"))
+            .order(Order::Foreground)
+            .anchor(Align2::CENTER_BOTTOM, Vec2::new(0.0, -16.0))
+            .show(ctx, |ui| {
+                theme::chrome_frame().show(ui, |ui| {
+                    let guide = theme::chrome_button(ui, theme::Icon::Guide, "3D Guide", false);
+                    egui::Popup::from_toggle_button_response(&guide)
+                        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                        .align(RectAlign::TOP)
+                        .width(336.0)
+                        .frame(theme::popover_frame())
+                        .show(|ui| self.shell_guide_palette(ui));
+                });
+            });
+    }
+
+    fn shell_guide_palette(&mut self, ui: &mut egui::Ui) {
+        ui.set_width(312.0);
+        shell_panel_header(
+            ui,
+            "3D guide",
+            "Draw on a plane or primitive. Every guide stays editable.",
+        );
+        egui::ScrollArea::vertical()
+            .id_salt("plume.shell.guide.scroll")
+            .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
+            .max_height((ui.ctx().content_rect().height() - 250.0).max(240.0))
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.set_width(300.0);
+                self.guides_panel(ui);
+            });
+    }
+
+    fn shell_guides_popup(&mut self, ui: &mut egui::Ui) {
+        ui.set_width(300.0);
+        shell_panel_header(ui, "Guides", "Construction surfaces for drawing in depth.");
+        egui::ScrollArea::vertical()
+            .id_salt("plume.shell.guides.scroll")
+            .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
+            .max_height((ui.ctx().content_rect().height() - 205.0).max(280.0))
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.set_width(288.0);
+                self.guides_panel(ui);
+            });
+    }
+
+    fn shell_layers_popup(&mut self, ui: &mut egui::Ui) {
+        ui.set_width(286.0);
+        shell_panel_header(
+            ui,
+            "Layers",
+            "Groups, strokes and visibility. Changes apply immediately.",
+        );
+        egui::ScrollArea::vertical()
+            .id_salt("plume.shell.layers.scroll")
+            .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
+            .max_height((ui.ctx().content_rect().height() - 205.0).max(280.0))
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.set_width(274.0);
+                self.layers_panel(ui);
+            });
+    }
+
+    fn shell_drawer(&mut self, ui: &mut egui::Ui) {
+        ui.set_width(288.0);
+        let (title, subtitle) = match self.left_tab {
+            LeftTab::Tools => ("Tools", "Draw, shape, liquify and transform strokes in 3D."),
+            LeftTab::Brushes => (
+                "Brushes",
+                "PLUME's brush library and the active brush's ink.",
+            ),
+            LeftTab::Guides => (
+                "Guides",
+                "Construction surfaces and symmetry for spatial drawing.",
+            ),
+            LeftTab::Layers => (
+                "Layers",
+                "Groups, strokes and visibility. Changes apply immediately.",
+            ),
+        };
+        shell_panel_header(ui, title, subtitle);
+        egui::ScrollArea::vertical()
+            .id_salt("plume.shell.drawer.scroll")
+            .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
+            .max_height((ui.ctx().content_rect().height() - 205.0).max(280.0))
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.set_width(276.0);
+                match self.left_tab {
+                    LeftTab::Tools => self.tools_panel(ui),
+                    LeftTab::Brushes => self.brushes_panel(ui),
+                    LeftTab::Guides => self.guides_panel(ui),
+                    LeftTab::Layers => self.layers_panel(ui),
+                }
+            });
+    }
+
+    fn shell_inspector_popup(&mut self, ui: &mut egui::Ui) {
+        let body_height = (ui.ctx().content_rect().height() - 165.0).max(240.0);
+        ui.set_width(302.0);
+        ui.set_max_height(body_height + 90.0);
+        self.inspector(ui, Some(body_height));
+    }
+
+    fn shell_status(&mut self, ctx: &egui::Context) {
+        let name = if self.doc.name.trim().is_empty() {
+            "Untitled"
+        } else {
+            self.doc.name.as_str()
+        };
+        let stats = self.doc.stats();
+        let detail = format!(
+            "{} · {} · {} × {} px",
+            self.status,
+            count_label(stats.curves, "curve"),
+            self.last_render_size[0],
+            self.last_render_size[1]
+        );
+        egui::Area::new(Id::unique("plume.shell.status"))
+            .order(Order::Foreground)
+            .anchor(Align2::LEFT_BOTTOM, Vec2::new(16.0, -14.0))
+            .show(ctx, |ui| {
+                Frame::new()
+                    .fill(theme::CHROME)
+                    .stroke(Stroke::new(1.0, theme::CHROME_LINE))
+                    .corner_radius(CornerRadius::same(16))
+                    .inner_margin(egui::Margin::symmetric(10, 6))
+                    .shadow(egui::epaint::Shadow {
+                        offset: [0, 4],
+                        blur: 14,
+                        spread: 0,
+                        color: Color32::from_black_alpha(44),
+                    })
+                    .show(ui, |ui| {
+                        ui.spacing_mut().item_spacing.x = 5.0;
+                        ui.horizontal_centered(|ui| {
+                            let (dot, _) = ui.allocate_exact_size(Vec2::splat(7.0), Sense::hover());
+                            ui.painter().circle_filled(
+                                dot.center(),
+                                2.5,
+                                if self.dirty {
+                                    theme::GOLD
+                                } else {
+                                    theme::GREEN
+                                },
+                            );
+                            ui.label(RichText::new(name).size(9.5).strong().color(theme::IVORY));
+                            ui.label(
+                                RichText::new(if self.dirty { "Unsaved" } else { "Saved" })
+                                    .size(9.0)
+                                    .color(theme::FAINT),
+                            );
+                            if self.media.is_some() {
+                                ui.add(egui::Spinner::new().size(10.0));
+                            }
+                        });
+                    })
+                    .response
+                    .on_hover_text(detail);
+            });
+    }
+
+    fn shell_timeline(&mut self, ctx: &egui::Context) {
+        if !self.show_timeline {
+            return;
+        }
+        let width = (ctx.content_rect().width() - 430.0).clamp(430.0, 720.0);
+        egui::Area::new(Id::unique("plume.shell.timeline"))
+            .order(Order::Foreground)
+            .anchor(Align2::CENTER_BOTTOM, Vec2::new(0.0, -68.0))
+            .show(ctx, |ui| {
+                Frame::new()
+                    .fill(theme::PANEL)
+                    .stroke(Stroke::new(1.0, theme::LINE_SOFT))
+                    .corner_radius(CornerRadius::same(15))
+                    .inner_margin(egui::Margin::symmetric(12, 8))
+                    .shadow(egui::epaint::Shadow {
+                        offset: [0, 8],
+                        blur: 24,
+                        spread: 0,
+                        color: Color32::from_black_alpha(76),
+                    })
+                    .show(ui, |ui| {
+                        ui.set_width(width);
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                RichText::new("Timeline")
+                                    .size(11.5)
+                                    .strong()
+                                    .color(theme::IVORY),
+                            );
+                            ui.label(
+                                RichText::new(format!(
+                                    "{} fps · loop {}",
+                                    self.doc.animation.fps,
+                                    if self.doc.animation.loop_playback {
+                                        "on"
+                                    } else {
+                                        "off"
+                                    }
+                                ))
+                                .size(9.0)
+                                .color(theme::FAINT),
+                            );
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                if icon_button(ui, theme::Icon::Close, false, "Hide timeline")
+                                    .clicked()
+                                {
+                                    self.show_timeline = false;
+                                }
+                            });
+                        });
+                        theme::divider(ui);
+                        self.timeline(ui);
+                    });
+            });
     }
 
     // -- status strip -------------------------------------------------------
@@ -790,11 +1574,19 @@ impl PlumeApp {
         let brush = self.current_brush();
         let (rect, response) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), 54.0), Sense::click());
+        let plate = theme::brush_plate(&brush);
         ui.painter().rect(
             rect,
             CornerRadius::same(7),
-            theme::PANEL_ALT,
-            Stroke::new(1.0, theme::LINE_SOFT),
+            plate,
+            Stroke::new(
+                1.0,
+                if plate == theme::INK {
+                    Color32::from_white_alpha(30)
+                } else {
+                    theme::LINE_SOFT
+                },
+            ),
             StrokeKind::Inside,
         );
         theme::brush_preview(
@@ -1438,6 +2230,179 @@ fn icon_button(ui: &mut egui::Ui, kind: theme::Icon, selected: bool, hint: &str)
     response.on_hover_text(hint)
 }
 
+/// One row in the floating PLUME menu. Returns true when chosen.
+fn menu_row(ui: &mut egui::Ui, label: &str, shortcut: &str) -> bool {
+    let (rect, response) =
+        ui.allocate_exact_size(Vec2::new(ui.available_width(), 28.0), Sense::click());
+    let fill = if response.hovered() {
+        theme::PANEL_HIGH
+    } else {
+        Color32::TRANSPARENT
+    };
+    ui.painter().rect_filled(rect, CornerRadius::same(7), fill);
+    ui.painter().text(
+        Pos2::new(rect.left() + 8.0, rect.center().y),
+        Align2::LEFT_CENTER,
+        label,
+        FontId::new(11.5, egui::FontFamily::Proportional),
+        theme::IVORY,
+    );
+    if !shortcut.is_empty() {
+        ui.painter().text(
+            Pos2::new(rect.right() - 8.0, rect.center().y),
+            Align2::RIGHT_CENTER,
+            shortcut,
+            FontId::new(9.0, egui::FontFamily::Proportional),
+            theme::FAINT,
+        );
+    }
+    response
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .clicked()
+}
+
+/// Header shared by every contextual paper popover.
+fn shell_panel_header(ui: &mut egui::Ui, title: &str, subtitle: &str) {
+    ui.horizontal(|ui| {
+        ui.vertical(|ui| {
+            ui.label(RichText::new(title).size(14.0).strong().color(theme::IVORY));
+            ui.label(RichText::new(subtitle).size(9.5).color(theme::FAINT));
+        });
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            if theme::chrome_icon(ui, theme::Icon::Close, 24.0, false, "Close panel").clicked() {
+                egui::Popup::close_all(ui.ctx());
+            }
+        });
+    });
+    ui.add_space(2.0);
+    theme::divider(ui);
+}
+
+fn rail_brush(ui: &mut egui::Ui, brush: &Brush) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(38.0), Sense::click());
+    let fill = if response.hovered() {
+        theme::CHROME_HOVER
+    } else {
+        theme::PANEL_ALT
+    };
+    ui.painter().rect(
+        rect,
+        CornerRadius::same(10),
+        fill,
+        Stroke::new(1.0, theme::LINE_SOFT),
+        StrokeKind::Inside,
+    );
+    // Adaptive plate keeps both pale and dark inks legible on the paper rail.
+    let swatch = rect.shrink2(Vec2::new(4.0, 4.0));
+    let plate = theme::brush_plate(brush);
+    ui.painter()
+        .rect_filled(swatch, CornerRadius::same(7), plate);
+    if plate != theme::INK {
+        ui.painter().rect_stroke(
+            swatch,
+            CornerRadius::same(7),
+            Stroke::new(1.0, theme::LINE_SOFT),
+            StrokeKind::Inside,
+        );
+    }
+    theme::brush_preview(
+        ui.painter(),
+        swatch.shrink2(Vec2::new(2.0, 5.0)),
+        brush,
+        false,
+    );
+    response
+        .on_hover_text("Brush library")
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+fn rail_colour(ui: &mut egui::Ui, brush: &Brush) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(36.0), Sense::click());
+    let center = rect.center();
+    if response.hovered() {
+        ui.painter()
+            .circle_filled(center, 16.0, theme::CHROME_HOVER);
+    }
+    ui.painter().circle_stroke(
+        center,
+        13.0,
+        Stroke::new(1.0, Color32::from_white_alpha(210)),
+    );
+    ui.painter()
+        .circle_filled(center, 11.5, theme::color32(brush.color));
+    ui.painter().circle_stroke(
+        center,
+        11.5,
+        Stroke::new(1.0, Color32::from_black_alpha(60)),
+    );
+    response
+        .on_hover_text("Ink colour and brush style")
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+fn rail_size(ui: &mut egui::Ui, size: f32) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(38.0, 47.0), Sense::click());
+    let center = Pos2::new(rect.center().x, rect.top() + 18.0);
+    if response.hovered() {
+        ui.painter()
+            .circle_filled(center, 18.0, theme::CHROME_HOVER);
+    }
+    ui.painter().circle_filled(center, 17.0, theme::PANEL_ALT);
+    ui.painter()
+        .circle_stroke(center, 17.0, Stroke::new(1.0, theme::LINE_SOFT));
+    let fraction = ((size.ln() - 0.2_f32.ln()) / (80.0_f32.ln() - 0.2_f32.ln())).clamp(0.0, 1.0);
+    ui.painter()
+        .circle_filled(center, 1.8 + fraction * 6.6, theme::IVORY);
+    ui.painter().text(
+        Pos2::new(rect.center().x, rect.bottom() - 5.0),
+        Align2::CENTER_BOTTOM,
+        format!("{size:.0}"),
+        FontId::new(8.5, egui::FontFamily::Proportional),
+        theme::FAINT,
+    );
+    response
+        .on_hover_text("Brush size")
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+fn rail_opacity(ui: &mut egui::Ui, opacity: f32) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(38.0, 47.0), Sense::click());
+    let center = Pos2::new(rect.center().x, rect.top() + 18.0);
+    if response.hovered() {
+        ui.painter()
+            .circle_filled(center, 18.0, theme::CHROME_HOVER);
+    }
+    ui.painter().circle_filled(center, 17.0, theme::PANEL_ALT);
+    ui.painter()
+        .circle_stroke(center, 17.0, Stroke::new(1.0, theme::LINE_SOFT));
+    let radius = 11.5;
+    ui.painter()
+        .circle_stroke(center, radius, Stroke::new(2.2, theme::LINE_SOFT));
+    let steps = 28;
+    let mut points = Vec::with_capacity(steps + 1);
+    for index in 0..=steps {
+        let t = index as f32 / steps as f32;
+        let angle =
+            -std::f32::consts::FRAC_PI_2 + std::f32::consts::TAU * opacity.clamp(0.0, 1.0) * t;
+        points.push(center + Vec2::angled(angle) * radius);
+    }
+    if opacity > 0.005 {
+        ui.painter()
+            .add(egui::Shape::line(points, Stroke::new(2.2, theme::CORAL)));
+    }
+    ui.painter().circle_filled(center, 2.2, theme::IVORY);
+    ui.painter().text(
+        Pos2::new(rect.center().x, rect.bottom() - 5.0),
+        Align2::CENTER_BOTTOM,
+        format!("{:.0}%", opacity.clamp(0.0, 1.0) * 100.0),
+        FontId::new(8.5, egui::FontFamily::Proportional),
+        theme::FAINT,
+    );
+    response
+        .on_hover_text("Brush opacity")
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
 fn snap_combo(ui: &mut egui::Ui, label: &str, snap: &mut SnapMode) {
     ui.horizontal(|ui| {
         ui.label(RichText::new(label).size(11.0).color(theme::MUTED));
@@ -1476,7 +2441,7 @@ fn category_color(category: BrushCategory) -> Color32 {
 // === INSPECTOR ===
 
 impl PlumeApp {
-    fn inspector(&mut self, ui: &mut egui::Ui) {
+    fn inspector(&mut self, ui: &mut egui::Ui, body_height: Option<f32>) {
         ui.spacing_mut().slider_width = 104.0;
         ui.spacing_mut().item_spacing.x = 5.0;
         ui.horizontal(|ui| {
@@ -1519,15 +2484,19 @@ impl PlumeApp {
             }
         });
         theme::divider(ui);
-        egui::ScrollArea::vertical()
+        let mut scroll = egui::ScrollArea::vertical()
+            .id_salt("plume.inspector.body")
             .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
-            .auto_shrink([false, false])
-            .show(ui, |ui| match self.inspector {
-                InspectorTab::Style => self.style_inspector(ui),
-                InspectorTab::Surface => self.surface_inspector(ui),
-                InspectorTab::Render => self.render_inspector(ui),
-                InspectorTab::Motion => self.motion_inspector(ui),
-            });
+            .auto_shrink([false, false]);
+        if let Some(height) = body_height {
+            scroll = scroll.max_height(height);
+        }
+        scroll.show(ui, |ui| match self.inspector {
+            InspectorTab::Style => self.style_inspector(ui),
+            InspectorTab::Surface => self.surface_inspector(ui),
+            InspectorTab::Render => self.render_inspector(ui),
+            InspectorTab::Motion => self.motion_inspector(ui),
+        });
     }
 
     // -- Style --------------------------------------------------------------
@@ -1700,11 +2669,19 @@ impl PlumeApp {
         theme::section_label(ui, "Active brush");
         let (rect, _) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), 58.0), Sense::hover());
+        let plate = theme::brush_plate(&brush);
         ui.painter().rect(
             rect,
             CornerRadius::same(7),
-            theme::PANEL_ALT,
-            Stroke::new(1.0, theme::LINE_SOFT),
+            plate,
+            Stroke::new(
+                1.0,
+                if plate == theme::INK {
+                    Color32::from_white_alpha(30)
+                } else {
+                    theme::LINE_SOFT
+                },
+            ),
             StrokeKind::Inside,
         );
         theme::brush_preview(
@@ -3023,7 +4000,7 @@ impl PlumeApp {
 // === VIEWPORT ===
 
 impl PlumeApp {
-    fn viewport(&mut self, ui: &mut egui::Ui) {
+    fn viewport(&mut self, ui: &mut egui::Ui, floating: bool) {
         let rect = ui.available_rect_before_wrap();
         let response = self.viewport_response(ui, rect);
         self.handle_viewport_input(ui, rect, &response);
@@ -3048,116 +4025,123 @@ impl PlumeApp {
                 Align2::CENTER_CENTER,
                 "PLUME could not initialise a GPU renderer.\nThe editor is still usable for export and document work.",
                 FontId::new(13.0, egui::FontFamily::Proportional),
-                theme::MUTED,
+                theme::CANVAS_MUTED,
             );
         }
 
         self.paint_gizmo(&painter, rect, &camera, size);
         self.paint_marquee(&painter, rect);
-        self.paint_brush_cursor(ui, &painter, rect, &camera, size);
+        self.paint_brush_cursor(ui, &painter, rect, &camera, size, floating);
 
         if self.show_stats {
-            self.paint_viewport_stats(&painter, rect, &camera);
+            self.paint_viewport_stats(&painter, rect, &camera, floating);
         }
 
-        // Top viewport strip: snaps on the left, display toggles on the right.
-        let hud = Rect::from_min_size(rect.min, Vec2::new(rect.width(), 40.0));
-        painter.rect_filled(
-            hud,
-            CornerRadius::ZERO,
-            theme::INK_SOFT.gamma_multiply(0.92),
-        );
-        painter.hline(
-            hud.x_range(),
-            hud.max.y - 0.5,
-            Stroke::new(1.0, theme::LINE_SOFT),
-        );
-        let hud_inner = hud.shrink2(Vec2::new(10.0, 6.0));
-        ui.scope_builder(UiBuilder::new().max_rect(hud_inner), |ui| {
-            ui.horizontal_centered(|ui| {
-                ui.spacing_mut().item_spacing.x = 3.0;
-                for (snap, short) in [
-                    (ViewSnap::Perspective, "Persp"),
-                    (ViewSnap::Top, "Top"),
-                    (ViewSnap::Front, "Front"),
-                    (ViewSnap::Right, "Right"),
-                ] {
-                    let response = ui.add(
-                        egui::Button::new(RichText::new(short).size(10.0).color(theme::MUTED))
-                            .fill(Color32::TRANSPARENT)
-                            .stroke(Stroke::NONE)
-                            .corner_radius(CornerRadius::same(4))
-                            .min_size(Vec2::new(42.0, 22.0)),
-                    );
-                    if response.clicked() {
-                        self.snap_view(snap);
+        if !floating {
+            // Studio keeps the original top strip so every view control stays
+            // visible while the four drawers are open.
+            let hud = Rect::from_min_size(rect.min, Vec2::new(rect.width(), 40.0));
+            painter.rect_filled(
+                hud,
+                CornerRadius::ZERO,
+                theme::INK_SOFT.gamma_multiply(0.96),
+            );
+            painter.hline(
+                hud.x_range(),
+                hud.max.y - 0.5,
+                Stroke::new(1.0, theme::LINE_SOFT),
+            );
+            let hud_inner = hud.shrink2(Vec2::new(10.0, 6.0));
+            ui.scope_builder(UiBuilder::new().max_rect(hud_inner), |ui| {
+                ui.horizontal_centered(|ui| {
+                    ui.spacing_mut().item_spacing.x = 3.0;
+                    for (snap, short) in [
+                        (ViewSnap::Perspective, "Persp"),
+                        (ViewSnap::Top, "Top"),
+                        (ViewSnap::Front, "Front"),
+                        (ViewSnap::Right, "Right"),
+                    ] {
+                        let response = ui.add(
+                            egui::Button::new(RichText::new(short).size(10.0).color(theme::MUTED))
+                                .fill(Color32::TRANSPARENT)
+                                .stroke(Stroke::NONE)
+                                .corner_radius(CornerRadius::same(4))
+                                .min_size(Vec2::new(42.0, 22.0)),
+                        );
+                        if response.clicked() {
+                            self.snap_view(snap);
+                        }
                     }
-                }
-                ui.add_space(6.0);
-                ui.separator();
-                ui.add_space(6.0);
-                let guide_name = self
-                    .doc
-                    .scene
-                    .active_guide
-                    .and_then(|id| self.doc.scene.guide(id))
-                    .map(|g| g.name.clone())
-                    .unwrap_or_else(|| "Camera plane".to_string());
-                ui.label(
-                    RichText::new(format!("Drawing on · {guide_name}"))
-                        .size(10.0)
-                        .color(theme::TEAL),
-                );
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    let stats = self.doc.stats();
-                    ui.label(
-                        RichText::new(format!(
-                            "{}  ·  {}  ·  {:.0} mm",
-                            count_label(stats.curves, "curve"),
-                            count_label(stats.guides, "guide"),
-                            camera.distance()
-                        ))
-                        .size(9.5)
-                        .color(theme::FAINT),
-                    );
                     ui.add_space(6.0);
-                    if ui
-                        .selectable_label(self.doc.render.grid, "Grid")
-                        .on_hover_text("Ground grid")
-                        .clicked()
-                    {
-                        self.doc.render.grid = !self.doc.render.grid;
-                        self.needs_render = true;
-                    }
-                    if ui
-                        .selectable_label(self.show_guides, "Guides")
-                        .on_hover_text("Construction surfaces")
-                        .clicked()
-                    {
-                        self.show_guides = !self.show_guides;
-                        self.needs_render = true;
-                    }
-                    egui::ComboBox::from_id_salt("hud-quality")
-                        .selected_text(self.quality.label())
-                        .width(82.0)
-                        .show_ui(ui, |ui| {
-                            for quality in [
-                                MeshQuality::Draft,
-                                MeshQuality::Normal,
-                                MeshQuality::High,
-                                MeshQuality::Export,
-                            ] {
-                                if ui
-                                    .selectable_value(&mut self.quality, quality, quality.label())
-                                    .clicked()
-                                {
-                                    self.needs_render = true;
+                    ui.separator();
+                    ui.add_space(6.0);
+                    let guide_name = self
+                        .doc
+                        .scene
+                        .active_guide
+                        .and_then(|id| self.doc.scene.guide(id))
+                        .map(|g| g.name.clone())
+                        .unwrap_or_else(|| "Camera plane".to_string());
+                    ui.label(
+                        RichText::new(format!("Drawing on · {guide_name}"))
+                            .size(10.0)
+                            .color(theme::TEAL),
+                    );
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        let stats = self.doc.stats();
+                        ui.label(
+                            RichText::new(format!(
+                                "{}  ·  {}  ·  {:.0} mm",
+                                count_label(stats.curves, "curve"),
+                                count_label(stats.guides, "guide"),
+                                camera.distance()
+                            ))
+                            .size(9.5)
+                            .color(theme::FAINT),
+                        );
+                        ui.add_space(6.0);
+                        if ui
+                            .selectable_label(self.doc.render.grid, "Grid")
+                            .on_hover_text("Ground grid")
+                            .clicked()
+                        {
+                            self.doc.render.grid = !self.doc.render.grid;
+                            self.needs_render = true;
+                        }
+                        if ui
+                            .selectable_label(self.show_guides, "Guides")
+                            .on_hover_text("Construction surfaces")
+                            .clicked()
+                        {
+                            self.show_guides = !self.show_guides;
+                            self.needs_render = true;
+                        }
+                        egui::ComboBox::from_id_salt("hud-quality")
+                            .selected_text(self.quality.label())
+                            .width(82.0)
+                            .show_ui(ui, |ui| {
+                                for quality in [
+                                    MeshQuality::Draft,
+                                    MeshQuality::Normal,
+                                    MeshQuality::High,
+                                    MeshQuality::Export,
+                                ] {
+                                    if ui
+                                        .selectable_value(
+                                            &mut self.quality,
+                                            quality,
+                                            quality.label(),
+                                        )
+                                        .clicked()
+                                    {
+                                        self.needs_render = true;
+                                    }
                                 }
-                            }
-                        });
+                            });
+                    });
                 });
             });
-        });
+        }
 
         if self.doc.scene.curves.is_empty() {
             let prompt = Rect::from_center_size(
@@ -3168,7 +4152,7 @@ impl PlumeApp {
                 prompt,
                 CornerRadius::same(9),
                 theme::INK.gamma_multiply(0.82),
-                Stroke::new(1.0, theme::LINE_SOFT),
+                Stroke::new(1.0, Color32::from_white_alpha(44)),
                 StrokeKind::Inside,
             );
             painter.text(
@@ -3176,14 +4160,14 @@ impl PlumeApp {
                 Align2::CENTER_CENTER,
                 "Draw your first stroke",
                 FontId::new(14.0, egui::FontFamily::Proportional),
-                theme::IVORY,
+                theme::CANVAS_TEXT,
             );
             painter.text(
                 prompt.center() + Vec2::new(0.0, 10.0),
                 Align2::CENTER_CENTER,
                 "Pick a brush on the left, then drag across the ground plane. Right-drag orbits.",
                 FontId::new(10.5, egui::FontFamily::Proportional),
-                theme::MUTED,
+                theme::CANVAS_MUTED,
             );
         }
     }
@@ -3231,8 +4215,8 @@ impl PlumeApp {
             painter.rect(
                 marquee,
                 CornerRadius::same(2),
-                theme::TEAL.gamma_multiply(0.12),
-                Stroke::new(1.0, theme::TEAL),
+                theme::CANVAS_TEAL.gamma_multiply(0.12),
+                Stroke::new(1.0, theme::CANVAS_TEAL),
                 StrokeKind::Inside,
             );
         }
@@ -3245,18 +4229,26 @@ impl PlumeApp {
         rect: Rect,
         camera: &plume_core::viewport::Camera,
         size: Vec2,
+        floating: bool,
     ) {
         let Some(pointer) = ui.ctx().input(|i| i.pointer.hover_pos()) else {
             return;
         };
-        if !rect.contains(pointer) || pointer.y < rect.top() + 40.0 {
+        if !rect.contains(pointer) {
+            return;
+        }
+        if floating {
+            if ui.ctx().is_pointer_over_egui() {
+                return;
+            }
+        } else if pointer.y < rect.top() + 40.0 {
             return;
         }
         let local = Vec2::new(pointer.x - rect.left(), pointer.y - rect.top());
         let color = match self.tool {
-            Tool::Brush => theme::IVORY,
-            Tool::Erase => theme::RED,
-            Tool::Liquify => theme::LILAC,
+            Tool::Brush => theme::CANVAS_TEXT,
+            Tool::Erase => theme::CANVAS_RED,
+            Tool::Liquify => theme::CANVAS_LILAC,
             _ => return,
         };
         let radius = match self.tool {
@@ -3280,13 +4272,21 @@ impl PlumeApp {
         painter: &egui::Painter,
         rect: Rect,
         camera: &plume_core::viewport::Camera,
+        floating: bool,
     ) {
-        let area = Rect::from_min_size(rect.min + Vec2::new(12.0, 52.0), Vec2::new(196.0, 78.0));
+        let area = if floating {
+            Rect::from_min_size(
+                Pos2::new(rect.right() - 208.0, rect.bottom() - 112.0),
+                Vec2::new(196.0, 78.0),
+            )
+        } else {
+            Rect::from_min_size(rect.min + Vec2::new(12.0, 52.0), Vec2::new(196.0, 78.0))
+        };
         painter.rect(
             area,
-            CornerRadius::same(7),
-            theme::INK.gamma_multiply(0.72),
-            Stroke::new(1.0, theme::LINE_SOFT.gamma_multiply(0.8)),
+            CornerRadius::same(9),
+            theme::INK.gamma_multiply(0.78),
+            Stroke::new(1.0, Color32::from_white_alpha(44)),
             StrokeKind::Inside,
         );
         let stats = self.doc.stats();
@@ -3319,9 +4319,9 @@ impl PlumeApp {
                 line,
                 FontId::new(9.5, egui::FontFamily::Monospace),
                 if index == 0 {
-                    theme::IVORY
+                    theme::CANVAS_TEXT
                 } else {
-                    theme::FAINT
+                    theme::CANVAS_MUTED
                 },
             );
         }
@@ -3330,9 +4330,9 @@ impl PlumeApp {
 
 fn axis_color(axis: transform::Axis) -> Color32 {
     match axis {
-        transform::Axis::X => theme::CORAL,
-        transform::Axis::Y => theme::GREEN,
-        transform::Axis::Z => theme::BLUE,
+        transform::Axis::X => theme::CANVAS_RED,
+        transform::Axis::Y => theme::CANVAS_GREEN,
+        transform::Axis::Z => theme::CANVAS_BLUE,
     }
 }
 
@@ -4445,10 +5445,19 @@ impl PlumeApp {
         let Some(toast) = &self.toast else {
             return;
         };
-        let color = if toast.error { theme::RED } else { theme::TEAL };
+        let color = if toast.error {
+            theme::CANVAS_RED
+        } else {
+            theme::CANVAS_TEAL
+        };
+        let (anchor, offset) = if self.workspace == Workspace::Floating {
+            (Align2::CENTER_TOP, Vec2::new(0.0, 76.0))
+        } else {
+            (Align2::CENTER_BOTTOM, Vec2::new(0.0, -34.0))
+        };
         egui::Area::new(Id::unique("plume.toast"))
             .order(egui::Order::Foreground)
-            .anchor(Align2::CENTER_BOTTOM, Vec2::new(0.0, -34.0))
+            .anchor(anchor, offset)
             .show(ctx, |ui| {
                 Frame::new()
                     .fill(theme::INK.gamma_multiply(0.94))
@@ -4459,7 +5468,11 @@ impl PlumeApp {
                         ui.horizontal(|ui| {
                             let (dot, _) = ui.allocate_exact_size(Vec2::splat(8.0), Sense::hover());
                             ui.painter().circle_filled(dot.center(), 3.0, color);
-                            ui.label(RichText::new(&toast.message).size(11.0).color(theme::IVORY));
+                            ui.label(
+                                RichText::new(&toast.message)
+                                    .size(11.0)
+                                    .color(theme::CANVAS_TEXT),
+                            );
                         });
                     });
             });

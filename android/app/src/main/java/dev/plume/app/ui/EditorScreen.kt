@@ -4,9 +4,10 @@ import android.app.Activity
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,8 +26,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -43,6 +42,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -60,6 +60,9 @@ fun EditorScreen(viewModel: PlumeViewModel) {
     var sheet by remember { mutableStateOf<EditorSheet?>(null) }
     var confirmNew by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
+    var stageMenuOpen by remember { mutableStateOf(false) }
+    var timelineVisible by remember { mutableStateOf(false) }
+    val dismissScrim = remember { MutableInteractionSource() }
     val pendingExport = remember { mutableStateOf<ExportFormat?>(null) }
 
     val exportLauncher = rememberLauncherForActivityResult(
@@ -99,69 +102,121 @@ fun EditorScreen(viewModel: PlumeViewModel) {
             .fillMaxSize()
             .background(PlumeColors.Ink),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding(),
-        ) {
-            EditorTopBar(
-                state = state,
-                onUndo = viewModel::undo,
-                onRedo = viewModel::redo,
-                menuOpen = menuOpen,
-                onMenuOpen = { menuOpen = true },
-                onMenuDismiss = { menuOpen = false },
-                onNew = {
-                    menuOpen = false
-                    confirmNew = true
-                },
-                onGallery = {
-                    menuOpen = false
-                    sheet = EditorSheet.Gallery
-                },
-                onExport = {
-                    menuOpen = false
-                    sheet = EditorSheet.Export
-                },
-                onAr = { placeInAr() },
-            )
+        PlumeCanvas(
+            state = state,
+            viewModel = viewModel,
+            modifier = Modifier.fillMaxSize(),
+        )
 
-            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                PlumeCanvas(
-                    state = state,
-                    viewModel = viewModel,
-                    modifier = Modifier.fillMaxSize(),
-                )
-
-                CanvasChrome(
-                    state = state,
-                    onFrame = viewModel::frameScene,
-                    onAr = { placeInAr() },
-                    onBrushes = { sheet = EditorSheet.Brushes },
-                )
-            }
-
-            TimelineBar(
-                duration = state.animationDuration,
-                onScrub = viewModel::scrub,
-                onStopPreview = viewModel::stopScrub,
-                onNote = viewModel::note,
+        if (menuOpen || stageMenuOpen) {
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
-            )
-
-            BottomDock(
-                state = state,
-                onTool = viewModel::setTool,
-                onBrushes = { sheet = EditorSheet.Brushes },
-                onGallery = { sheet = EditorSheet.Gallery },
-                onExport = { sheet = EditorSheet.Export },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding(),
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource = dismissScrim,
+                        indication = null,
+                    ) {
+                        menuOpen = false
+                        stageMenuOpen = false
+                    },
             )
         }
+
+        FloatingTopBar(
+            state = state,
+            onMenuOpen = {
+                stageMenuOpen = false
+                menuOpen = !menuOpen
+            },
+            onHome = {
+                menuOpen = false
+                stageMenuOpen = false
+                sheet = EditorSheet.Gallery
+            },
+            onUndo = viewModel::undo,
+            onRedo = viewModel::redo,
+            onFrame = viewModel::frameScene,
+            onExport = {
+                menuOpen = false
+                stageMenuOpen = false
+                sheet = EditorSheet.Export
+            },
+        )
+
+        if (menuOpen) {
+            ChromeMenuCard(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .statusBarsPadding()
+                    .padding(start = 12.dp, top = 64.dp),
+            ) {
+                ChromeMenuRow("New blank scene") {
+                    menuOpen = false
+                    confirmNew = true
+                }
+                ChromeMenuRow("Scene gallery") {
+                    menuOpen = false
+                    sheet = EditorSheet.Gallery
+                }
+                ChromeMenuRow("Export scene") {
+                    menuOpen = false
+                    sheet = EditorSheet.Export
+                }
+                ChromeMenuRow("Place with AR") {
+                    menuOpen = false
+                    placeInAr()
+                }
+                ChromeMenuRow(
+                    if (timelineVisible) "Hide timeline" else "Show timeline",
+                ) {
+                    timelineVisible = !timelineVisible
+                    menuOpen = false
+                }
+            }
+        }
+
+        FloatingToolRail(
+            state = state,
+            onTool = viewModel::setTool,
+            onBrushes = { sheet = EditorSheet.Brushes },
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = 12.dp),
+        )
+
+        StageDock(
+            timelineVisible = timelineVisible,
+            menuOpen = stageMenuOpen,
+            duration = state.animationDuration,
+            onMenuOpen = {
+                menuOpen = false
+                stageMenuOpen = true
+            },
+            onScrub = viewModel::scrub,
+            onStopPreview = viewModel::stopScrub,
+            onNote = viewModel::note,
+            onFrame = {
+                stageMenuOpen = false
+                viewModel.frameScene()
+            },
+            onOrbit = {
+                stageMenuOpen = false
+                viewModel.setTool(EditorTool.Orbit)
+            },
+            onAr = {
+                stageMenuOpen = false
+                placeInAr()
+            },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+
+        StatusCapsule(
+            status = state.status,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .navigationBarsPadding()
+                .padding(start = 12.dp, bottom = 14.dp),
+        )
 
         if (state.busy) {
             BusyOverlay(state.status)
@@ -232,94 +287,316 @@ fun EditorScreen(viewModel: PlumeViewModel) {
 }
 
 @Composable
-private fun EditorTopBar(
+private fun FloatingTopBar(
     state: dev.plume.app.EditorState,
+    onMenuOpen: () -> Unit,
+    onHome: () -> Unit,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
-    menuOpen: Boolean,
-    onMenuOpen: () -> Unit,
-    onMenuDismiss: () -> Unit,
-    onNew: () -> Unit,
-    onGallery: () -> Unit,
+    onFrame: () -> Unit,
     onExport: () -> Unit,
-    onAr: () -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(58.dp)
-            .padding(horizontal = 12.dp),
+            .statusBarsPadding()
+            .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        PlumeMark(modifier = Modifier.size(26.dp))
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = "PLUME",
-                color = PlumeColors.Ivory,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = 4.5.sp,
-            )
-            Text(
-                text = listOfNotNull(
-                    state.info?.name ?: "Opening studio",
-                    if (state.autosavedAt > 0) "Saved" else null,
-                ).joinToString(" · "),
-                color = PlumeColors.Muted,
-                style = MaterialTheme.typography.labelSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+        ChromeSurface {
+            Row(
+                modifier = Modifier.padding(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ChromeIconButton(
+                    glyph = PlumeGlyph.Home,
+                    label = "Scene gallery",
+                    onClick = onHome,
+                )
+                ChromeRule()
+                ChromeIconButton(
+                    glyph = PlumeGlyph.Menu,
+                    label = "Scene menu",
+                    onClick = onMenuOpen,
+                )
+            }
         }
 
-        TopBarButton(
-            glyph = PlumeGlyph.Undo,
-            label = "Undo",
-            enabled = state.info?.canUndo == true,
-            onClick = onUndo,
-        )
-        TopBarButton(
-            glyph = PlumeGlyph.Redo,
-            label = "Redo",
-            enabled = state.info?.canRedo == true,
-            onClick = onRedo,
-        )
+        Spacer(Modifier.weight(1f))
 
-        Box {
-            TopBarButton(
-                glyph = PlumeGlyph.Menu,
-                label = "Scene menu",
-                onClick = onMenuOpen,
-            )
-            DropdownMenu(
-                expanded = menuOpen,
-                onDismissRequest = onMenuDismiss,
+        ChromeSurface {
+            Row(
+                modifier = Modifier.padding(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                DropdownMenuItem(
-                    text = { Text("Scene gallery") },
-                    onClick = onGallery,
+                ChromeIconButton(
+                    glyph = PlumeGlyph.Undo,
+                    label = "Undo",
+                    enabled = state.info?.canUndo == true,
+                    onClick = onUndo,
                 )
-                DropdownMenuItem(
-                    text = { Text("New blank scene") },
-                    onClick = onNew,
+                ChromeIconButton(
+                    glyph = PlumeGlyph.Redo,
+                    label = "Redo",
+                    enabled = state.info?.canRedo == true,
+                    onClick = onRedo,
                 )
-                DropdownMenuItem(
-                    text = { Text("Export scene") },
+                ChromeIconButton(
+                    glyph = PlumeGlyph.Frame,
+                    label = "Frame the artwork",
+                    onClick = onFrame,
+                )
+                ChromeIconButton(
+                    glyph = PlumeGlyph.Send,
+                    label = "Export scene",
                     onClick = onExport,
-                )
-                DropdownMenuItem(
-                    text = { Text("Place with AR") },
-                    onClick = onAr,
                 )
             }
         }
     }
-    Hairline()
 }
 
 @Composable
-private fun TopBarButton(
+private fun FloatingToolRail(
+    state: dev.plume.app.EditorState,
+    onTool: (EditorTool) -> Unit,
+    onBrushes: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        ChromeSurface {
+            Column(
+                modifier = Modifier.padding(4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                RailToolButton(
+                    glyph = PlumeGlyph.Draw,
+                    label = "Draw",
+                    active = state.tool == EditorTool.Draw,
+                    onClick = { onTool(EditorTool.Draw) },
+                )
+                RailToolButton(
+                    glyph = PlumeGlyph.Erase,
+                    label = "Erase",
+                    active = state.tool == EditorTool.Erase,
+                    onClick = { onTool(EditorTool.Erase) },
+                )
+                RailToolButton(
+                    glyph = PlumeGlyph.Orbit,
+                    label = "Orbit",
+                    active = state.tool == EditorTool.Orbit,
+                    onClick = { onTool(EditorTool.Orbit) },
+                )
+            }
+        }
+
+        ChromeSurface {
+            Box(modifier = Modifier.padding(4.dp)) {
+                BrushRailButton(state = state, onClick = onBrushes)
+            }
+        }
+    }
+}
+
+@Composable
+private fun BrushRailButton(
+    state: dev.plume.app.EditorState,
+    onClick: () -> Unit,
+) {
+    val brush = state.brushes.firstOrNull { it.id == state.selectedBrush }
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(PlumeColors.InkSoft)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        BrushSwatch(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 7.dp, vertical = 8.dp),
+            color = PlumeColors.CanvasText,
+            weight = ((brush?.size ?: 5f) / 24f).coerceIn(0.12f, 1f),
+        )
+    }
+}
+
+@Composable
+private fun StageDock(
+    timelineVisible: Boolean,
+    menuOpen: Boolean,
+    duration: Double,
+    onMenuOpen: () -> Unit,
+    onScrub: (Double) -> Unit,
+    onStopPreview: () -> Unit,
+    onNote: (String) -> Unit,
+    onFrame: () -> Unit,
+    onOrbit: () -> Unit,
+    onAr: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(bottom = 14.dp),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            if (timelineVisible) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    color = PlumeColors.Chrome,
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.55f)),
+                    shadowElevation = 6.dp,
+                ) {
+                    TimelineBar(
+                        duration = duration,
+                        onScrub = onScrub,
+                        onStopPreview = onStopPreview,
+                        onNote = onNote,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+            }
+
+            if (menuOpen) {
+                ChromeMenuCard(width = 190.dp) {
+                    ChromeMenuRow("Frame artwork", onClick = onFrame)
+                    ChromeMenuRow("Orbit the stage", onClick = onOrbit)
+                    ChromeMenuRow("Place with AR", onClick = onAr)
+                }
+                Spacer(Modifier.height(10.dp))
+            }
+
+            Surface(
+                onClick = onMenuOpen,
+                shape = CircleShape,
+                color = PlumeColors.Chrome,
+                contentColor = PlumeColors.Ivory,
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.55f)),
+                shadowElevation = 6.dp,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 15.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    PlumeIcon(
+                        glyph = PlumeGlyph.Cube,
+                        label = "Stage controls",
+                        modifier = Modifier.size(16.dp),
+                        tint = PlumeColors.Ivory,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "3D",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = PlumeColors.Ivory,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChromeMenuCard(
+    modifier: Modifier = Modifier,
+    width: Dp = 216.dp,
+    content: @Composable () -> Unit,
+) {
+    Surface(
+        modifier = modifier.width(width),
+        shape = RoundedCornerShape(18.dp),
+        color = PlumeColors.Panel,
+        border = BorderStroke(1.dp, PlumeColors.LineSoft),
+        shadowElevation = 12.dp,
+    ) {
+        Column(modifier = Modifier.padding(vertical = 6.dp)) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun ChromeMenuRow(
+    label: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            color = PlumeColors.Ivory,
+        )
+    }
+}
+
+@Composable
+private fun StatusCapsule(
+    status: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.widthIn(max = 186.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = PlumeColors.Chrome,
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.55f)),
+        shadowElevation = 4.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(5.dp)
+                    .clip(CircleShape)
+                    .background(PlumeColors.Teal),
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = status,
+                color = PlumeColors.Muted,
+                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.2.sp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChromeSurface(content: @Composable () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = PlumeColors.Chrome,
+        contentColor = PlumeColors.Ivory,
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.55f)),
+        shadowElevation = 6.dp,
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun ChromeIconButton(
     glyph: PlumeGlyph,
     label: String,
     enabled: Boolean = true,
@@ -327,8 +604,8 @@ private fun TopBarButton(
 ) {
     Box(
         modifier = Modifier
-            .size(44.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .size(40.dp)
+            .clip(CircleShape)
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -342,242 +619,36 @@ private fun TopBarButton(
 }
 
 @Composable
-private fun CanvasChrome(
-    state: dev.plume.app.EditorState,
-    onFrame: () -> Unit,
-    onAr: () -> Unit,
-    onBrushes: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        BrushChip(
-            state = state,
-            onClick = onBrushes,
-            modifier = Modifier.widthIn(max = 168.dp),
-        )
-        Spacer(Modifier.weight(1f))
-        CirclePlate(glyph = PlumeGlyph.Frame, label = "Frame the artwork", onClick = onFrame)
-        Spacer(Modifier.width(8.dp))
-        Surface(
-            onClick = onAr,
-            color = PlumeColors.Panel.copy(alpha = 0.88f),
-            contentColor = PlumeColors.Teal,
-            shape = CircleShape,
-            border = androidx.compose.foundation.BorderStroke(1.dp, PlumeColors.Line),
-            modifier = Modifier.height(44.dp),
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                PlumeIcon(PlumeGlyph.Ar, "Place with AR", Modifier.size(16.dp), PlumeColors.Teal)
-                Spacer(Modifier.width(5.dp))
-                Text(
-                    text = "AR",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = PlumeColors.Teal,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-        }
-    }
-
+private fun ChromeRule() {
     Box(
         modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 12.dp)
-            .padding(bottom = 14.dp),
-    ) {
-        StatusPill(
-            status = state.status,
-            modifier = Modifier.align(Alignment.BottomStart),
-        )
-    }
+            .padding(horizontal = 2.dp)
+            .width(1.dp)
+            .height(20.dp)
+            .background(PlumeColors.LineSoft),
+    )
 }
 
 @Composable
-private fun CirclePlate(
-    glyph: PlumeGlyph,
-    label: String,
-    onClick: () -> Unit,
-) {
-    Surface(
-        onClick = onClick,
-        shape = CircleShape,
-        color = PlumeColors.Panel.copy(alpha = 0.88f),
-        contentColor = PlumeColors.Ivory,
-        border = androidx.compose.foundation.BorderStroke(1.dp, PlumeColors.Line),
-        modifier = Modifier.size(44.dp),
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            PlumeIcon(glyph, label, Modifier.size(18.dp), PlumeColors.Ivory)
-        }
-    }
-}
-
-@Composable
-private fun StatusPill(status: String, modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier
-            .widthIn(max = 310.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(PlumeColors.Ink.copy(alpha = 0.78f))
-            .border(1.dp, PlumeColors.Line.copy(alpha = 0.8f), RoundedCornerShape(18.dp))
-            .padding(horizontal = 11.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(5.dp)
-                .clip(CircleShape)
-                .background(PlumeColors.Teal),
-        )
-        Spacer(Modifier.width(7.dp))
-        Text(
-            text = status,
-            color = PlumeColors.Muted,
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun BrushChip(
-    state: dev.plume.app.EditorState,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val brush = state.brushes.firstOrNull { it.id == state.selectedBrush }
-    Row(
-        modifier = modifier
-            .height(44.dp)
-            .clip(RoundedCornerShape(22.dp))
-            .background(PlumeColors.Panel.copy(alpha = 0.9f))
-            .border(1.dp, PlumeColors.Line, RoundedCornerShape(22.dp))
-            .clickable(onClick = onClick)
-            .padding(start = 7.dp, end = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(width = 40.dp, height = 24.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .background(PlumeColors.InkSoft),
-            contentAlignment = Alignment.Center,
-        ) {
-            BrushSwatch(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 5.dp),
-                color = PlumeColors.Coral,
-                weight = ((brush?.size ?: 5f) / 24f).coerceIn(0.12f, 1f),
-            )
-        }
-        Spacer(Modifier.width(7.dp))
-        Text(
-            text = brush?.name ?: "Choose brush",
-            color = PlumeColors.Ivory,
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-    }
-}
-
-@Composable
-private fun BottomDock(
-    state: dev.plume.app.EditorState,
-    onTool: (EditorTool) -> Unit,
-    onBrushes: () -> Unit,
-    onGallery: () -> Unit,
-    onExport: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(modifier = modifier.background(PlumeColors.Panel)) {
-        Hairline()
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(66.dp)
-                .padding(horizontal = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            DockItem(
-                glyph = PlumeGlyph.Draw,
-                label = "Draw",
-                active = state.tool == EditorTool.Draw,
-                onClick = { onTool(EditorTool.Draw) },
-                modifier = Modifier.weight(1f),
-            )
-            DockItem(
-                glyph = PlumeGlyph.Erase,
-                label = "Erase",
-                active = state.tool == EditorTool.Erase,
-                onClick = { onTool(EditorTool.Erase) },
-                modifier = Modifier.weight(1f),
-            )
-            DockItem(
-                glyph = PlumeGlyph.Orbit,
-                label = "Orbit",
-                active = state.tool == EditorTool.Orbit,
-                onClick = { onTool(EditorTool.Orbit) },
-                modifier = Modifier.weight(1f),
-            )
-            DockItem(
-                glyph = PlumeGlyph.Brushes,
-                label = "Brushes",
-                active = false,
-                onClick = onBrushes,
-                modifier = Modifier.weight(1f),
-            )
-            DockItem(
-                glyph = PlumeGlyph.Scenes,
-                label = "Scenes",
-                active = false,
-                onClick = onGallery,
-                modifier = Modifier.weight(1f),
-            )
-            DockItem(
-                glyph = PlumeGlyph.Send,
-                label = "Export",
-                active = false,
-                onClick = onExport,
-                modifier = Modifier.weight(1f),
-            )
-        }
-    }
-}
-
-@Composable
-private fun DockItem(
+private fun RailToolButton(
     glyph: PlumeGlyph,
     label: String,
     active: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
-    val tint = if (active) PlumeColors.Coral else PlumeColors.Muted
-    Column(
-        modifier = modifier
-            .height(56.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(if (active) PlumeColors.Coral.copy(alpha = 0.10f) else Color.Transparent)
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .background(if (active) PlumeColors.Ink.copy(alpha = 0.09f) else Color.Transparent)
             .clickable(onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+        contentAlignment = Alignment.Center,
     ) {
-        PlumeIcon(glyph, label, Modifier.size(21.dp), tint)
-        Spacer(Modifier.height(3.dp))
-        Text(
-            text = label,
-            color = tint,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+        PlumeIcon(
+            glyph = glyph,
+            label = label,
+            modifier = Modifier.size(20.dp),
+            tint = if (active) PlumeColors.Coral else PlumeColors.Ivory,
         )
     }
 }
@@ -593,7 +664,7 @@ private fun BusyOverlay(status: String) {
         Surface(
             color = PlumeColors.PanelHigh,
             shape = RoundedCornerShape(14.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, PlumeColors.Line),
+            border = BorderStroke(1.dp, PlumeColors.Line),
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -614,16 +685,6 @@ private fun BusyOverlay(status: String) {
             }
         }
     }
-}
-
-@Composable
-private fun Hairline() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(1.dp)
-            .background(PlumeColors.Line.copy(alpha = 0.7f)),
-    )
 }
 
 private fun suggestedName(documentName: String?, format: ExportFormat): String {

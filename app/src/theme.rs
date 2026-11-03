@@ -1,4 +1,4 @@
-//! PLUME's visual language: ink, ivory and a few warm accents.
+//! PLUME's visual language: warm paper chrome floating over an ink canvas.
 //!
 //! Everything here is original artwork generated from code. No external fonts,
 //! icons or image assets are loaded, which keeps the desktop harness portable
@@ -6,68 +6,84 @@
 
 use egui::{
     epaint::PathStroke, Align2, Color32, CornerRadius, FontFamily, FontId, Frame, Margin, Pos2,
-    Rect, Stroke, StrokeKind, TextStyle, Vec2, Visuals,
+    Rect, Response, Sense, Stroke, StrokeKind, TextStyle, Vec2, Visuals,
 };
 use plume_core::brush::{Brush, ProfileShape};
 use plume_core::pattern::PatternKind;
 use plume_core::Vec4;
 
-// Ink / paper family.
-pub const INK: Color32 = Color32::from_rgb(18, 20, 23);
-pub const INK_SOFT: Color32 = Color32::from_rgb(25, 28, 32);
-pub const PANEL: Color32 = Color32::from_rgb(31, 34, 39);
-pub const PANEL_ALT: Color32 = Color32::from_rgb(39, 43, 49);
-pub const PANEL_HIGH: Color32 = Color32::from_rgb(48, 53, 60);
-pub const LINE: Color32 = Color32::from_rgb(63, 69, 77);
-pub const LINE_SOFT: Color32 = Color32::from_rgb(48, 53, 59);
-pub const IVORY: Color32 = Color32::from_rgb(240, 234, 220);
-pub const MUTED: Color32 = Color32::from_rgb(155, 154, 146);
-pub const FAINT: Color32 = Color32::from_rgb(108, 109, 108);
+// Ink / paper family. The chrome is warm paper; the canvas stays ink so the
+// artwork always carries the frame.
+pub const INK: Color32 = Color32::from_rgb(22, 24, 28);
+pub const INK_SOFT: Color32 = Color32::from_rgb(229, 224, 212);
+pub const PANEL: Color32 = Color32::from_rgb(246, 242, 234);
+pub const PANEL_ALT: Color32 = Color32::from_rgb(236, 231, 221);
+pub const PANEL_HIGH: Color32 = Color32::from_rgb(224, 218, 206);
+pub const LINE: Color32 = Color32::from_rgb(174, 167, 152);
+pub const LINE_SOFT: Color32 = Color32::from_rgb(207, 200, 186);
+pub const IVORY: Color32 = Color32::from_rgb(29, 31, 35);
+pub const MUTED: Color32 = Color32::from_rgb(94, 96, 99);
+pub const FAINT: Color32 = Color32::from_rgb(137, 136, 130);
 
-// Accents.
-pub const CORAL: Color32 = Color32::from_rgb(236, 110, 81);
-pub const CORAL_DEEP: Color32 = Color32::from_rgb(188, 76, 56);
-pub const TEAL: Color32 = Color32::from_rgb(99, 197, 181);
-pub const GOLD: Color32 = Color32::from_rgb(224, 183, 97);
-pub const LILAC: Color32 = Color32::from_rgb(167, 151, 236);
-pub const RED: Color32 = Color32::from_rgb(224, 94, 94);
-pub const GREEN: Color32 = Color32::from_rgb(111, 190, 128);
-pub const BLUE: Color32 = Color32::from_rgb(108, 160, 230);
+// Translucent floating chrome. This is the Feather-like shell: pale glass
+// pills that hover above the render instead of full-width DCC bars.
+pub const CHROME: Color32 = Color32::from_rgba_unmultiplied_const(244, 240, 232, 238);
+pub const CHROME_HOVER: Color32 = Color32::from_rgba_unmultiplied_const(252, 249, 243, 248);
+pub const CHROME_DOWN: Color32 = Color32::from_rgba_unmultiplied_const(226, 220, 209, 248);
+pub const CHROME_LINE: Color32 = Color32::from_rgba_unmultiplied_const(255, 255, 255, 110);
 
-// The viewport surround is darker than the panels so the artwork carries the
-// frame.
+// Accents. These are deeper than the old dark-theme pastels so they keep their
+// contrast on paper.
+pub const CORAL: Color32 = Color32::from_rgb(216, 84, 56);
+pub const CORAL_DEEP: Color32 = Color32::from_rgb(183, 66, 43);
+pub const TEAL: Color32 = Color32::from_rgb(45, 137, 124);
+pub const GOLD: Color32 = Color32::from_rgb(172, 121, 40);
+pub const LILAC: Color32 = Color32::from_rgb(111, 90, 190);
+pub const RED: Color32 = Color32::from_rgb(190, 68, 68);
+pub const GREEN: Color32 = Color32::from_rgb(54, 128, 73);
+pub const BLUE: Color32 = Color32::from_rgb(55, 107, 177);
+
+// Canvas-only colours. The render is dark in both workspaces, so overlays
+// painted directly onto it must not follow the paper text colour.
 pub const VOID: Color32 = Color32::from_rgb(13, 15, 18);
+pub const CANVAS_TEXT: Color32 = Color32::from_rgb(241, 237, 228);
+pub const CANVAS_MUTED: Color32 = Color32::from_rgb(158, 158, 155);
+pub const CANVAS_TEAL: Color32 = Color32::from_rgb(118, 226, 203);
+pub const CANVAS_RED: Color32 = Color32::from_rgb(255, 119, 99);
+pub const CANVAS_LILAC: Color32 = Color32::from_rgb(190, 168, 255);
+pub const CANVAS_GREEN: Color32 = Color32::from_rgb(137, 228, 148);
+pub const CANVAS_BLUE: Color32 = Color32::from_rgb(123, 174, 255);
 
 /// Install the PLUME style on an egui context.
 pub fn apply(ctx: &egui::Context) {
-    let mut style = (*ctx.style_of(egui::Theme::Dark)).clone();
+    let mut style = (*ctx.style_of(egui::Theme::Light)).clone();
 
-    let mut visuals = Visuals::dark();
-    visuals.dark_mode = true;
+    let mut visuals = Visuals::light();
+    visuals.dark_mode = false;
     visuals.panel_fill = PANEL;
     visuals.window_fill = PANEL;
-    visuals.extreme_bg_color = INK;
+    visuals.extreme_bg_color = Color32::from_rgb(251, 248, 241);
     visuals.faint_bg_color = PANEL_ALT;
-    visuals.code_bg_color = INK_SOFT;
+    visuals.code_bg_color = PANEL_ALT;
     visuals.override_text_color = Some(IVORY);
     visuals.weak_text_color = Some(MUTED);
     visuals.weak_text_alpha = 0.9;
-    visuals.window_corner_radius = CornerRadius::same(10);
-    visuals.menu_corner_radius = CornerRadius::same(8);
+    visuals.window_corner_radius = CornerRadius::same(14);
+    visuals.menu_corner_radius = CornerRadius::same(12);
     visuals.window_stroke = Stroke::new(1.0, LINE);
-    visuals.selection.bg_fill = CORAL.gamma_multiply(0.38);
-    visuals.selection.stroke = Stroke::new(1.0, CORAL);
+    visuals.selection.bg_fill = CORAL.gamma_multiply(0.28);
+    visuals.selection.stroke = Stroke::new(1.0, CORAL_DEEP);
     visuals.hyperlink_color = TEAL;
     visuals.warn_fg_color = GOLD;
     visuals.error_fg_color = RED;
     visuals.button_frame = true;
     visuals.collapsing_header_frame = false;
     visuals.indent_has_left_vline = false;
-    visuals.striped = true;
+    visuals.striped = false;
     visuals.slider_trailing_fill = true;
     visuals.resize_corner_size = 10.0;
 
-    let corner = CornerRadius::same(6);
+    let corner = CornerRadius::same(8);
     visuals.widgets.noninteractive.bg_fill = PANEL;
     visuals.widgets.noninteractive.weak_bg_fill = PANEL;
     visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0, LINE_SOFT);
@@ -84,14 +100,14 @@ pub fn apply(ctx: &egui::Context) {
     visuals.widgets.hovered.bg_fill = PANEL_HIGH;
     visuals.widgets.hovered.weak_bg_fill = PANEL_HIGH;
     visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, CORAL.gamma_multiply(0.8));
-    visuals.widgets.hovered.fg_stroke = Stroke::new(1.4, IVORY);
+    visuals.widgets.hovered.fg_stroke = Stroke::new(1.4, INK);
     visuals.widgets.hovered.corner_radius = corner;
     visuals.widgets.hovered.expansion = 0.0;
 
-    visuals.widgets.active.bg_fill = CORAL_DEEP;
-    visuals.widgets.active.weak_bg_fill = CORAL_DEEP;
-    visuals.widgets.active.bg_stroke = Stroke::new(1.0, CORAL);
-    visuals.widgets.active.fg_stroke = Stroke::new(1.5, IVORY);
+    visuals.widgets.active.bg_fill = CORAL;
+    visuals.widgets.active.weak_bg_fill = CORAL;
+    visuals.widgets.active.bg_stroke = Stroke::new(1.0, CORAL_DEEP);
+    visuals.widgets.active.fg_stroke = Stroke::new(1.5, INK);
     visuals.widgets.active.corner_radius = corner;
     visuals.widgets.active.expansion = 0.0;
 
@@ -111,6 +127,11 @@ pub fn apply(ctx: &egui::Context) {
     style.spacing.interact_size = Vec2::new(28.0, 22.0);
     style.spacing.icon_width = 16.0;
     style.spacing.icon_width_inner = 10.0;
+    style.spacing.scroll = egui::style::ScrollStyle {
+        foreground_color: true,
+        bar_width: 9.0,
+        ..egui::style::ScrollStyle::solid()
+    };
     style.animation_time = 0.12;
     style.text_styles = [
         (
@@ -133,8 +154,100 @@ pub fn apply(ctx: &egui::Context) {
     ]
     .into();
 
-    ctx.set_theme(egui::ThemePreference::Dark);
-    ctx.set_style_of(egui::Theme::Dark, style);
+    ctx.set_theme(egui::ThemePreference::Light);
+    ctx.set_style_of(egui::Theme::Light, style);
+}
+
+/// The translucent floating chrome used by the Feather-like shell.
+pub fn chrome_frame() -> Frame {
+    Frame::new()
+        .fill(CHROME)
+        .stroke(Stroke::new(1.0, CHROME_LINE))
+        .corner_radius(CornerRadius::same(16))
+        .inner_margin(Margin::symmetric(5, 5))
+        .shadow(egui::epaint::Shadow {
+            offset: [0, 6],
+            blur: 22,
+            spread: 0,
+            color: Color32::from_black_alpha(68),
+        })
+}
+
+/// Opaque paper cards for popovers and drawers.
+pub fn popover_frame() -> Frame {
+    Frame::new()
+        .fill(PANEL)
+        .stroke(Stroke::new(1.0, LINE_SOFT))
+        .corner_radius(CornerRadius::same(16))
+        .inner_margin(Margin::same(12))
+        .shadow(egui::epaint::Shadow {
+            offset: [0, 8],
+            blur: 28,
+            spread: 0,
+            color: Color32::from_black_alpha(82),
+        })
+}
+
+/// Round, icon-only control for the floating shell.
+pub fn chrome_icon(
+    ui: &mut egui::Ui,
+    kind: Icon,
+    size: f32,
+    selected: bool,
+    hint: &str,
+) -> Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
+    let bg = if selected {
+        CORAL
+    } else if response.is_pointer_button_down_on() {
+        CHROME_DOWN
+    } else if response.hovered() {
+        CHROME_HOVER
+    } else {
+        Color32::TRANSPARENT
+    };
+    ui.painter().circle_filled(rect.center(), size * 0.5, bg);
+    icon(
+        ui.painter(),
+        rect.shrink(size * 0.21),
+        kind,
+        if selected { INK } else { IVORY },
+    );
+    response.on_hover_text(hint)
+}
+
+/// Pill-shaped icon-and-label control for the bottom of the shell.
+pub fn chrome_button(ui: &mut egui::Ui, kind: Icon, label: &str, selected: bool) -> Response {
+    let text = ui.painter().layout_no_wrap(
+        label.to_owned(),
+        FontId::new(12.0, FontFamily::Proportional),
+        IVORY,
+    );
+    let width = text.size().x + 46.0;
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 36.0), Sense::click());
+    let bg = if response.is_pointer_button_down_on() {
+        CHROME_DOWN
+    } else if response.hovered() || selected {
+        CHROME_HOVER
+    } else {
+        Color32::TRANSPARENT
+    };
+    ui.painter().rect_filled(rect, CornerRadius::same(18), bg);
+    icon(
+        ui.painter(),
+        Rect::from_center_size(
+            Pos2::new(rect.left() + 18.0, rect.center().y),
+            Vec2::splat(17.0),
+        ),
+        kind,
+        IVORY,
+    );
+    ui.painter().galley(
+        Pos2::new(rect.left() + 32.0, rect.center().y - 7.0),
+        text,
+        IVORY,
+    );
+    response
 }
 
 pub fn panel_frame() -> Frame {
@@ -195,6 +308,18 @@ pub fn divider(ui: &mut egui::Ui) {
     ui.painter()
         .hline(rect.x_range(), rect.center().y, Stroke::new(1.0, LINE_SOFT));
     ui.add_space(2.0);
+}
+
+/// Pick a preview plate that keeps pale inks legible without turning every
+/// brush thumbnail into a black tile. Dark inks sit on paper, pale inks on ink.
+pub fn brush_plate(brush: &Brush) -> Color32 {
+    let c = brush.color;
+    let luminance = 0.2126 * c.x + 0.7152 * c.y + 0.0722 * c.z;
+    if luminance > 0.55 {
+        INK
+    } else {
+        PANEL_ALT
+    }
 }
 
 pub fn color32(v: Vec4) -> Color32 {
@@ -317,6 +442,10 @@ pub enum Icon {
     Check,
     Rewind,
     Key,
+    Home,
+    Menu,
+    Layers,
+    Sliders,
 }
 
 pub fn icon(painter: &egui::Painter, rect: Rect, kind: Icon, color: Color32) {
@@ -328,16 +457,29 @@ pub fn icon(painter: &egui::Painter, rect: Rect, kind: Icon, color: Color32) {
     let line = |a: Pos2, b: Pos2| painter.line_segment([a, b], s);
     match kind {
         Icon::Brush => {
-            painter.add(egui::Shape::line(
+            let r = rect.width().min(rect.height()) * 0.46;
+            let p = |x: f32, y: f32| c + Vec2::new(x * r, y * r);
+            let neck = p(0.18, -0.18);
+            let tip = p(-0.52, 0.94);
+            let dir = (tip - neck).normalized();
+            let perp = Vec2::new(-dir.y, dir.x);
+            painter.line_segment([p(0.66, -1.0), neck], Stroke::new(r * 0.22, color));
+            painter.line_segment(
+                [neck + perp * r * 0.34, neck - perp * r * 0.34],
+                Stroke::new(r * 0.16, color),
+            );
+            let base = neck + dir * r * 0.18;
+            painter.add(egui::Shape::convex_polygon(
                 vec![
-                    c + Vec2::new(-r * 0.9, r * 0.9),
-                    c + Vec2::new(-r * 0.1, r * 0.1),
-                    c + Vec2::new(r * 0.7, -r * 0.75),
+                    base + perp * r * 0.32,
+                    base - perp * r * 0.32,
+                    tip - perp * r * 0.1,
+                    tip + perp * r * 0.1,
                 ],
-                PathStroke::new(2.0, color),
+                color,
+                Stroke::NONE,
             ));
-            painter.circle_stroke(c + Vec2::new(-r * 0.1, r * 0.1), r * 0.65, thin);
-            dot(c + Vec2::new(-r * 0.9, r * 0.9));
+            painter.circle_filled(tip, r * 0.1, color);
         }
         Icon::Eraser => {
             let block =
@@ -618,6 +760,55 @@ pub fn icon(painter: &egui::Painter, rect: Rect, kind: Icon, color: Color32) {
                 c + Vec2::new(r * 0.05, r * 0.55),
             );
         }
+        Icon::Home => {
+            painter.add(egui::Shape::line(
+                vec![
+                    c + Vec2::new(-r, -r * 0.05),
+                    c + Vec2::new(0.0, -r),
+                    c + Vec2::new(r, -r * 0.05),
+                ],
+                PathStroke::new(1.5, color),
+            ));
+            painter.rect_stroke(
+                Rect::from_min_max(
+                    c + Vec2::new(-r * 0.62, -r * 0.02),
+                    c + Vec2::new(r * 0.62, r * 0.78),
+                ),
+                CornerRadius::same(1),
+                s,
+                StrokeKind::Middle,
+            );
+            line(
+                c + Vec2::new(-r * 0.16, r * 0.78),
+                c + Vec2::new(-r * 0.16, r * 0.22),
+            );
+        }
+        Icon::Menu => {
+            for dy in [-0.5_f32, 0.0, 0.5] {
+                line(c + Vec2::new(-r, dy * r), c + Vec2::new(r, dy * r));
+            }
+        }
+        Icon::Layers => {
+            for (dy, alpha) in [(0.45_f32, 0.55_f32), (0.0, 0.8), (-0.45, 1.0)] {
+                let centre = c + Vec2::new(0.0, dy * r);
+                painter.add(egui::Shape::closed_line(
+                    vec![
+                        centre + Vec2::new(-r, 0.0),
+                        centre + Vec2::new(0.0, -r * 0.42),
+                        centre + Vec2::new(r, 0.0),
+                        centre + Vec2::new(0.0, r * 0.42),
+                    ],
+                    Stroke::new(1.1, color.gamma_multiply(alpha)),
+                ));
+            }
+        }
+        Icon::Sliders => {
+            for (dy, knob) in [(-0.55_f32, 0.25_f32), (0.0, -0.35), (0.55, 0.5)] {
+                let y = c.y + dy * r;
+                line(Pos2::new(c.x - r, y), Pos2::new(c.x + r, y));
+                painter.circle_filled(Pos2::new(c.x + knob * r, y), 2.1, color);
+            }
+        }
     }
 }
 
@@ -812,6 +1003,17 @@ pub fn brush_chip(ui: &mut egui::Ui, brush: &Brush, selected: bool, show_name: b
             rect.max.y - 4.0,
         ),
     );
+    let plate = brush_plate(brush);
+    ui.painter()
+        .rect_filled(preview_rect, CornerRadius::same(5), plate);
+    if plate == INK {
+        ui.painter().rect_stroke(
+            preview_rect,
+            CornerRadius::same(5),
+            Stroke::new(1.0, Color32::from_white_alpha(26)),
+            StrokeKind::Inside,
+        );
+    }
     brush_preview(
         ui.painter(),
         preview_rect,

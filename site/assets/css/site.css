@@ -1404,10 +1404,10 @@ ol {
   letter-spacing: 0.08em;
 }
 
-.interface-tag--1 { top: 22%; left: 38%; }
-.interface-tag--2 { top: 54%; left: 5%; }
-.interface-tag--3 { top: 44%; right: 5%; }
-.interface-tag--4 { bottom: 9%; left: 48%; }
+.interface-tag--1 { top: 34%; left: 40%; }
+.interface-tag--2 { top: 18%; left: 5%; }
+.interface-tag--3 { top: 9%; right: 5%; }
+.interface-tag--4 { bottom: 12%; left: 51%; }
 
 .interface-inset {
   position: absolute;

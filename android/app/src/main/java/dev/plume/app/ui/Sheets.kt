@@ -57,6 +57,7 @@ fun PlumeSheet(
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = PlumeColors.Panel,
         contentColor = PlumeColors.Ivory,
+        scrimColor = PlumeColors.Ink.copy(alpha = 0.45f),
         dragHandle = {
             Box(
                 Modifier
@@ -131,7 +132,7 @@ fun GallerySheet(
                 Column(
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
-                        .background(if (selected) PlumeColors.PanelHigh else PlumeColors.InkSoft)
+                        .background(if (selected) PlumeColors.PanelHigh else PlumeColors.PaperAlt)
                         .clickable { onLoad(entry.id) }
                         .padding(6.dp),
                 ) {
@@ -153,7 +154,7 @@ fun GallerySheet(
                         } else {
                             BrushSwatch(
                                 modifier = Modifier.fillMaxWidth().height(74.dp).padding(12.dp),
-                                color = PlumeColors.Faint,
+                                color = PlumeColors.CanvasMuted,
                             )
                         }
                     }
@@ -216,7 +217,7 @@ fun BrushSheet(
                         ) {
                             BrushSwatch(
                                 modifier = Modifier.fillMaxWidth().height(32.dp).padding(horizontal = 7.dp),
-                                color = if (selected) PlumeColors.Coral else PlumeColors.Ivory,
+                                color = if (selected) PlumeColors.Coral else PlumeColors.CanvasText,
                                 weight = (brush.size / 24f).coerceIn(0.15f, 1f),
                                 dotted = category.contains("Dot", ignoreCase = true),
                                 flat = category.contains("Wide", ignoreCase = true),
@@ -263,7 +264,7 @@ fun ExportSheet(
             ExportFormat.entries.forEach { format ->
                 Surface(
                     onClick = { onPick(format) },
-                    color = PlumeColors.InkSoft,
+                    color = PlumeColors.PaperAlt,
                     shape = RoundedCornerShape(9.dp),
                     modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
                 ) {

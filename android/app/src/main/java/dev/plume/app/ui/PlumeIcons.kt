@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 enum class PlumeGlyph {
     Undo,
     Redo,
+    Home,
     Menu,
     Close,
     Play,
@@ -79,6 +80,43 @@ fun PlumeIcon(
                     drawLine(tint, Offset(w * 0.22f, h * 0.55f), Offset(w * 0.10f, h * 0.44f), stroke, StrokeCap.Round)
                     drawLine(tint, Offset(w * 0.22f, h * 0.55f), Offset(w * 0.34f, h * 0.44f), stroke, StrokeCap.Round)
                 }
+            }
+
+            PlumeGlyph.Home -> {
+                val roof = path {
+                    moveTo(w * 0.16f, h * 0.48f)
+                    lineTo(w * 0.50f, h * 0.20f)
+                    lineTo(w * 0.84f, h * 0.48f)
+                }
+                drawPath(roof, tint, style = line)
+                val body = path {
+                    moveTo(w * 0.26f, h * 0.45f)
+                    lineTo(w * 0.26f, h * 0.79f)
+                    lineTo(w * 0.74f, h * 0.79f)
+                    lineTo(w * 0.74f, h * 0.45f)
+                }
+                drawPath(body, tint, style = thin)
+                drawLine(
+                    tint,
+                    Offset(w * 0.44f, h * 0.79f),
+                    Offset(w * 0.44f, h * 0.61f),
+                    thin.width,
+                    StrokeCap.Round,
+                )
+                drawLine(
+                    tint,
+                    Offset(w * 0.44f, h * 0.61f),
+                    Offset(w * 0.56f, h * 0.61f),
+                    thin.width,
+                    StrokeCap.Round,
+                )
+                drawLine(
+                    tint,
+                    Offset(w * 0.56f, h * 0.61f),
+                    Offset(w * 0.56f, h * 0.79f),
+                    thin.width,
+                    StrokeCap.Round,
+                )
             }
 
             PlumeGlyph.Menu -> {

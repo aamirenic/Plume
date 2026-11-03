@@ -5,7 +5,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
-import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -19,43 +19,49 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * PLUME's palette is original: warm ivory ink on a charcoal studio, coral for
- * the active tool, teal for secondary state, and muted gold for time.
+ * PLUME's mobile shell follows the desktop studio: warm paper chrome floating
+ * over an ink canvas, coral for the active tool, teal for secondary state, and
+ * muted gold for time. Canvas-only ink stays dark behind the artwork.
  */
 object PlumeColors {
-    val Ink = Color(0xFF0D0F12)
+    val Ink = Color(0xFF0B0D10)
     val InkSoft = Color(0xFF12151A)
-    val Panel = Color(0xFF171A1F)
-    val PanelHigh = Color(0xFF1E2229)
-    val Ivory = Color(0xFFF2EEE4)
-    val Muted = Color(0xFFA7A9A5)
-    val Faint = Color(0xFF6E726F)
-    val Coral = Color(0xFFF27362)
-    val Teal = Color(0xFF59BFC4)
-    val Gold = Color(0xFFD9B56B)
-    val Line = Color(0xFF2A2E34)
-    val Danger = Color(0xFFE05B4D)
+    val CanvasText = Color(0xFFF2EEE4)
+    val CanvasMuted = Color(0xFFA7A9A5)
+    val Panel = Color(0xFFF6F2EA)
+    val PanelHigh = Color(0xFFE9E2D5)
+    val PaperAlt = Color(0xFFEFE9DD)
+    val Ivory = Color(0xFF1D1F23)
+    val Muted = Color(0xFF5E6063)
+    val Faint = Color(0xFF8C8982)
+    val Coral = Color(0xFFE86A58)
+    val Teal = Color(0xFF2F8F94)
+    val Gold = Color(0xFF9C7726)
+    val Line = Color(0xFFCFC8BA)
+    val LineSoft = Color(0xFFE0D9CC)
+    val Chrome = Color(0xF2F6F2EA)
+    val Danger = Color(0xFFC74538)
 }
 
-private val PlumeScheme = darkColorScheme(
+private val PlumeScheme = lightColorScheme(
     primary = PlumeColors.Coral,
     onPrimary = PlumeColors.Ink,
-    primaryContainer = Color(0xFF48231E),
+    primaryContainer = Color(0xFFF6D5CE),
     onPrimaryContainer = PlumeColors.Ivory,
     secondary = PlumeColors.Teal,
-    onSecondary = PlumeColors.Ink,
-    secondaryContainer = Color(0xFF173A3D),
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFD6EDEE),
     onSecondaryContainer = PlumeColors.Ivory,
     tertiary = PlumeColors.Gold,
-    onTertiary = PlumeColors.Ink,
+    onTertiary = Color.White,
     background = PlumeColors.Ink,
-    onBackground = PlumeColors.Ivory,
+    onBackground = PlumeColors.CanvasText,
     surface = PlumeColors.Panel,
     onSurface = PlumeColors.Ivory,
     surfaceVariant = PlumeColors.PanelHigh,
     onSurfaceVariant = PlumeColors.Muted,
     outline = PlumeColors.Line,
-    outlineVariant = Color(0xFF20242A),
+    outlineVariant = PlumeColors.LineSoft,
     error = PlumeColors.Danger,
 )
 
@@ -179,7 +185,7 @@ fun RibbonDivider(modifier: Modifier = Modifier) {
 @Composable
 fun BrushSwatch(
     modifier: Modifier = Modifier,
-    color: Color = PlumeColors.Ivory,
+    color: Color = PlumeColors.CanvasText,
     weight: Float = 0.5f,
     dotted: Boolean = false,
     flat: Boolean = false,
